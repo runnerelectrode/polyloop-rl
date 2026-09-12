@@ -50,6 +50,24 @@ def renderer_for(model: str, renderer: str | None) -> str:
     return model_info.get_recommended_renderer_name(model)
 
 
+def warm(base_url: str, model: str, rank: int = 32, timeout: float = 2400.0, log=print) -> str:
+    """Bring the trainer's inference engines up. SkyRL creates them lazily on the first
+    sampling-related call from a training run, so base-model sampling before any run fails
+    with "inference engine not ready". One LoRA model + one sampler save is the wake-up call
+    (same sequence the hosted tier uses at boot). Returns the sampler path, ignorable."""
+    import tinker
+
+    prepare_env(base_url)
+    t0 = time.monotonic()
+    service = tinker.ServiceClient(base_url=base_url)
+    tc = service.create_lora_training_client(base_model=model, rank=rank)
+    fut = tc.save_weights_for_sampler(name="polyloop-warm")
+    resp = fut.result(timeout=timeout) if "timeout" in fut.result.__code__.co_varnames else fut.result()
+    path = getattr(resp, "path", None)
+    log(f"engine warm in {time.monotonic() - t0:.0f}s ({path})")
+    return path or ""
+
+
 def load_tasks(dataset: str, limit: int | None = None, seed: int = 0, names: list[str] | None = None):
     from tinker_cookbook.recipes.harbor_rl.harbor_env import load_harbor_tasks
 

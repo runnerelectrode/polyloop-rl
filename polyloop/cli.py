@@ -81,10 +81,11 @@ def eval_cmd(loop_path, dataset, limit, sampler_path, repeats, out):
     """Ad-hoc: score a checkpoint on a task set (baseline numbers)."""
     import asyncio
 
-    from polyloop.harness.rollout import load_tasks, run_rollouts
+    from polyloop.harness.rollout import load_tasks, run_rollouts, warm
 
     cfg, _ = _store(loop_path)
     g, s, sb = cfg.gate, cfg.stages[0], cfg.sandbox
+    warm(cfg.base_url, cfg.model, rank=s.lora_rank, log=click.echo)
     tasks = load_tasks(dataset or g.holdout, limit=limit or g.holdout_limit, seed=g.holdout_seed)
     out_path = Path(out).expanduser() if out else None
     if out_path:
@@ -104,6 +105,16 @@ def eval_cmd(loop_path, dataset, limit, sampler_path, repeats, out):
     ok = [r for r in results if r.error is None and r.mean is not None]
     mean = sum(r.mean for r in ok) / len(ok) if ok else float("nan")
     click.echo(f"{len(ok)}/{len(results)} tasks scored, mean reward {mean:.3f}, errors {len(results) - len(ok)}")
+
+
+@main.command("warm")
+@click.option("--loop", "loop_path", required=True)
+def warm_cmd(loop_path):
+    """Bring the trainer's sampler engines up (first sample otherwise fails)."""
+    from polyloop.harness.rollout import warm
+
+    cfg, _ = _store(loop_path)
+    warm(cfg.base_url, cfg.model, rank=cfg.stages[0].lora_rank, log=click.echo)
 
 
 @main.group("tasks")

@@ -145,7 +145,12 @@ class Runner:
             problems.append("learning rate too high for the staleness bound")
         if problems:
             raise CycleAborted("preflight: " + "; ".join(problems))
-        self.cycle.mark_done("preflight", checks=["pool", "holdout", "docker", "trainer", "disk", "staleness"])
+        from polyloop.harness.rollout import warm
+
+        t0 = time.monotonic()
+        warm(self.cfg.base_url, self.cfg.model, rank=self.stage.lora_rank, log=self._say)
+        self._charge("preflight", time.monotonic() - t0)
+        self.cycle.mark_done("preflight", checks=["pool", "holdout", "docker", "trainer", "disk", "staleness", "engine-warm"])
 
     def filter(self) -> None:
         fc = self.cfg.filter
