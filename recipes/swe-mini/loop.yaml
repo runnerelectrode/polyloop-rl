@@ -1,0 +1,55 @@
+# polyloop-rl demo loop: Qwen3.5-9B LoRA, cookbook bash-tool agent on SWE-smith tasks,
+# gated on a fixed SWE-bench Verified subset. One Lambda 2xH100 node: GPU0 trainer, GPU1 sampler.
+name: swe-mini
+model: Qwen/Qwen3.5-9B
+base_url: http://127.0.0.1:8000
+runs_dir: ~/polyloop-runs
+tasks: ~/polyloop-tasks/swesmith-pool            # built by `polyloop tasks swesmith --out ...`
+
+stages:
+  - kind: rl
+    harness: cookbook-bash
+    group_size: 4
+    groups_per_batch: 8
+    steps: 6
+    max_steps_off_policy: 0
+    learning_rate: 1.0e-5
+    max_tokens: 4096
+    max_turns: 30
+    max_trajectory_tokens: 28672
+    lora_rank: 32
+    loss: importance_sampling
+    save_every: 2
+
+sandbox:
+  backend: docker
+  timeout: 3600
+  command_timeout: 120
+  grader_timeout: 900
+  max_parallel: 16
+
+filter:
+  pool_sample: 32          # tasks newly measured per cycle under the incumbent
+  rollouts_per_task: 4
+  keep_min: 0.0            # contested = 0 < pass rate < 1
+  keep_max: 1.0
+  min_tasks: 4
+
+budget:
+  gpus: 2
+  max_cycle_gpu_seconds: 57600   # 8 h x 2 GPUs
+
+gate:
+  holdout: swebench-verified@1.0/swebench-verified
+  holdout_limit: 40
+  holdout_seed: 0
+  repeats: 2
+  temperature: 1.0
+  min_delta: 0.01
+  tie_band: 0.01
+  max_regressions: 2
+  logprob_abs_diff_max: 0.05
+  max_error_rate: 0.2
+
+promote:
+  mode: approve            # approve | auto
