@@ -76,7 +76,8 @@ class Runner:
                     f.write(json.dumps(r.to_dict()) + "\n")
 
         results = asyncio.run(run_rollouts(tasks=tasks, sampler_path=sampler_path, k=k, temperature=temperature,
-                                           on_result=on_result, **self._rollout_kwargs()))
+                                           on_result=on_result, trajectories_dir=(out / "trajectories") if out else None,
+                                           **self._rollout_kwargs()))
         self._charge(stage, time.monotonic() - t0)
         return results
 

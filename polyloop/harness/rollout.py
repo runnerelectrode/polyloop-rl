@@ -102,6 +102,7 @@ async def run_rollouts(
     temperature: float = 1.0,
     context_window: int | None = None,
     on_result=None,
+    trajectories_dir: Path | None = None,
 ) -> list[TaskResult]:
     import tinker
     from rlcli.harbor_tito import BridgingHarborDatasetBuilder
@@ -127,6 +128,13 @@ async def run_rollouts(
     )
     groups = builder._make_env_group_builders(k)
     sem = asyncio.Semaphore(max_parallel)
+    if trajectories_dir is not None:
+        # Every episode as an ATIF trajectory (Harbor's format) with token ids: the audit
+        # trail a receipt points at, and what a proposing agent reads to diagnose failures.
+        from rlcli import atif
+
+        trajectories_dir.mkdir(parents=True, exist_ok=True)
+        atif.configure(atif.FileSink(str(trajectories_dir)))
 
     async def one(egb) -> TaskResult:
         res = TaskResult(task=egb.task.task_name)
@@ -147,4 +155,10 @@ async def run_rollouts(
             on_result(res)
         return res
 
-    return await asyncio.gather(*(one(g) for g in groups))
+    try:
+        return await asyncio.gather(*(one(g) for g in groups))
+    finally:
+        if trajectories_dir is not None:
+            from rlcli import atif
+
+            atif.configure(None)

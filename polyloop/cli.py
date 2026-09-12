@@ -101,7 +101,8 @@ def eval_cmd(loop_path, dataset, limit, sampler_path, repeats, out):
         base_url=cfg.base_url, model=cfg.model, renderer=cfg.renderer, tasks=tasks, sampler_path=sampler_path,
         k=repeats, max_parallel=sb.max_parallel, max_tokens=s.max_tokens, max_turns=s.max_turns,
         max_trajectory_tokens=s.max_trajectory_tokens, sandbox_timeout=sb.timeout, command_timeout=sb.command_timeout,
-        grader_timeout=sb.grader_timeout, temperature=g.temperature, context_window=s.max_trajectory_tokens, on_result=on_result))
+        grader_timeout=sb.grader_timeout, temperature=g.temperature, context_window=s.max_trajectory_tokens, on_result=on_result,
+        trajectories_dir=(out_path / "trajectories") if out_path else None))
     ok = [r for r in results if r.error is None and r.mean is not None]
     mean = sum(r.mean for r in ok) / len(ok) if ok else float("nan")
     click.echo(f"{len(ok)}/{len(results)} tasks scored, mean reward {mean:.3f}, errors {len(results) - len(ok)}")
