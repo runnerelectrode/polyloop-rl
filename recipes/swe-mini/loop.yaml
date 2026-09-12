@@ -4,7 +4,7 @@ name: swe-mini
 model: Qwen/Qwen3.5-9B
 base_url: http://127.0.0.1:8000
 runs_dir: ~/polyloop-runs
-tasks: ~/polyloop-tasks/swesmith-pool            # built by `polyloop tasks swesmith --out ...`
+tasks: ~/polyloop-tasks/swesmith-pool-v1            # built by `polyloop tasks swesmith --out ...`
 
 stages:
   - kind: rl
