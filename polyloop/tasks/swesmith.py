@@ -45,12 +45,12 @@ python - <<'PY'
 import json, subprocess
 cfg = json.load(open("/tests/config.json"))
 files = sorted({n.split("::", 1)[0] for n in cfg["FAIL_TO_PASS"]})
-env = {{"GIT_DIR": "{git_dir}", "GIT_WORK_TREE": "/testbed"}}
-subprocess.run(["git", "checkout", "HEAD~1", "--", *files], env={{**__import__("os").environ, **env}}, timeout=120)
+env = {"GIT_DIR": "@GIT_DIR@", "GIT_WORK_TREE": "/testbed"}
+subprocess.run(["git", "checkout", "HEAD~1", "--", *files], env={**__import__("os").environ, **env}, timeout=120)
 PY
 XD="-p no:xdist"; python -c 'import xdist' 2>/dev/null && XD="-n4"
 NODES=$(python -c 'import json,shlex; c=json.load(open("/tests/config.json")); print(" ".join(shlex.quote(n) for n in c["nodes"]))')
-eval timeout {timeout} python -m pytest -rA -p no:cacheprovider $XD $NODES > /logs/test_output.log 2>&1
+eval timeout @TIMEOUT@ python -m pytest -rA -p no:cacheprovider $XD $NODES > /logs/test_output.log 2>&1
 python /tests/grade.py
 """
 
@@ -145,7 +145,7 @@ def write_task(row: dict, out_dir: Path, verifier_timeout: int = 900) -> Path:
         instance_id=iid, repo=row["repo"], image=row["image_name"], n_f2p=len(f2p), n_p2p=len(p2p_graded),
         verifier_timeout=verifier_timeout))
     (d / "environment" / "Dockerfile").write_text(DOCKERFILE.format(image=row["image_name"], instance_id=iid, git_dir=GIT_DIR))
-    (d / "tests" / "test.sh").write_text(TEST_SH.format(git_dir=GIT_DIR, timeout=verifier_timeout - 60))
+    (d / "tests" / "test.sh").write_text(TEST_SH.replace("@GIT_DIR@", GIT_DIR).replace("@TIMEOUT@", str(verifier_timeout - 60)))
     (d / "tests" / "grade.py").write_text(GRADE_PY)
     (d / "tests" / "config.json").write_text(json.dumps({
         "instance_id": iid, "image_name": row["image_name"], "repo": row["repo"],

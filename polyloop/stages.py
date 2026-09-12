@@ -133,7 +133,7 @@ class Runner:
         try:
             import httpx
 
-            r = httpx.get(self.cfg.base_url.rstrip("/") + "/api/v1/server_capabilities", timeout=10)
+            r = httpx.get(self.cfg.base_url.rstrip("/") + "/api/v1/get_server_capabilities", timeout=10)
             if r.status_code >= 400:
                 problems.append(f"trainer server {r.status_code}")
         except Exception as exc:
