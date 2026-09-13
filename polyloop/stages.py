@@ -160,25 +160,33 @@ class Runner:
         stats = self.store.cache("pool_stats")
         under = stats.setdefault(inc_id, {})
         pool = load_tasks(self.cfg.tasks)
-        unmeasured = [t for t in pool if t.task_name not in under]
+        out = self.cycle.subdir("filter")
         import random
 
         rng = random.Random(self.cycle.id)
-        sample = rng.sample(unmeasured, min(fc.pool_sample, len(unmeasured))) if unmeasured else []
-        out = self.cycle.subdir("filter")
-        if sample:
-            self._say(f"filter: measuring {len(sample)} tasks x {fc.rollouts_per_task} under {inc_id}")
+        contested = lambda: sorted(t for t, v in under.items() if fc.keep_min < v["pass_rate"] < fc.keep_max)
+        rounds = 0
+        newly = 0
+        while len(contested()) < fc.target_tasks and rounds < fc.max_rounds:
+            unmeasured = [t for t in pool if t.task_name not in under]
+            if not unmeasured:
+                break
+            sample = rng.sample(unmeasured, min(fc.pool_sample, len(unmeasured)))
+            rounds += 1
+            self._say(f"filter round {rounds}: {len(contested())} contested so far; measuring {len(sample)} tasks x {fc.rollouts_per_task} under {inc_id}")
             results = self._run_rollouts("filter", sample, inc.get("sampler_path"), fc.rollouts_per_task, out=out)
             for r in results:
                 if r.error is None and r.rewards:
                     under[r.task] = {"pass_rate": r.mean, "n": len(r.rewards), "cycle": self.cycle.id}
+                    newly += 1
             self.store.save_cache("pool_stats", stats)
-        contested = sorted(t for t, v in under.items() if fc.keep_min < v["pass_rate"] < fc.keep_max)
-        (out / "contested.json").write_text(json.dumps(contested, indent=1))
-        self.cycle.update(train_task_names=contested, measured=len(under))
-        if len(contested) < fc.min_tasks:
-            raise CycleAborted(f"filter: only {len(contested)} contested tasks (< {fc.min_tasks}); measured {len(under)}")
-        self.cycle.mark_done("filter", measured=len(under), contested=len(contested), newly_measured=len(sample))
+            self._check_budget("filter")
+        keep = contested()
+        (out / "contested.json").write_text(json.dumps(keep, indent=1))
+        self.cycle.update(train_task_names=keep, measured=len(under))
+        if len(keep) < fc.min_tasks:
+            raise CycleAborted(f"filter: only {len(keep)} contested tasks (< {fc.min_tasks}); measured {len(under)}")
+        self.cycle.mark_done("filter", measured=len(under), contested=len(keep), newly_measured=newly, rounds=rounds)
 
     def train(self) -> None:
         st = self.cycle.state

@@ -31,8 +31,21 @@ def main(spec_path: str) -> int:
     if not tasks:
         print("no tasks", file=sys.stderr)
         return 2
-    renderer = renderer_for(spec["model"], spec.get("renderer"))
     st = spec["stage"]
+    # The cookbook dataset is one pass over its task list, groups_per_batch groups per step.
+    # Tile the contested tasks so the run has exactly `steps` batches (fresh rollouts each
+    # time a task recurs; a few passes over a small contested set is normal for GRPO).
+    import random
+
+    want = st["steps"] * st["groups_per_batch"]
+    rng = random.Random(spec.get("seed", 0))
+    tiled = []
+    while len(tiled) < want:
+        chunk = list(tasks)
+        rng.shuffle(chunk)
+        tiled.extend(chunk)
+    tasks = tiled[:want]
+    renderer = renderer_for(spec["model"], spec.get("renderer"))
     builder = BridgingHarborDatasetBuilder(
         tasks=tasks, batch_size=st["groups_per_batch"], group_size=st["group_size"],
         model_name=spec["model"], renderer_name=renderer, max_turns=st["max_turns"],

@@ -29,7 +29,9 @@ sandbox:
   max_parallel: 16
 
 filter:
-  pool_sample: 32          # tasks newly measured per cycle under the incumbent
+  pool_sample: 32          # tasks measured per round under the incumbent
+  target_tasks: 16         # measure more rounds until this many contested tasks exist
+  max_rounds: 4
   rollouts_per_task: 4
   keep_min: 0.0            # contested = 0 < pass rate < 1
   keep_max: 1.0

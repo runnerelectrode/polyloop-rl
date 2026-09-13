@@ -38,11 +38,13 @@ class SandboxConfig:
 
 @dataclass
 class FilterConfig:
-    pool_sample: int = 32                # tasks measured per cycle under the incumbent
+    pool_sample: int = 32                # tasks measured per round under the incumbent
     rollouts_per_task: int = 4
     keep_min: float = 0.0                # keep tasks whose pass rate is in (keep_min, keep_max)
     keep_max: float = 1.0
     min_tasks: int = 4                   # refuse to train on fewer contested tasks
+    target_tasks: int = 16               # keep measuring rounds until this many are contested (or pool exhausted)
+    max_rounds: int = 4
 
 
 @dataclass
