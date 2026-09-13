@@ -83,6 +83,9 @@ class Runner:
 
     # ---- stages ---------------------------------------------------------
     def run(self, upto: str | None = None) -> str:
+        if self.cycle.state.get("status") in (None, "failed", "aborted"):
+            self.cycle.update(status="running", failed_stage=None, reason=None)
+            self.cycle.emit("cycle.resume" if self.cycle.state.get("stages_done") else "cycle.start")
         for name in STAGES:
             if self.cycle.stage_done(name):
                 self._say(f"{name}: done earlier, skipping")
