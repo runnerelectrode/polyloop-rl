@@ -118,6 +118,18 @@ def warm_cmd(loop_path):
     warm(cfg.base_url, cfg.model, rank=cfg.stages[0].lora_rank, log=click.echo)
 
 
+@main.command("report")
+@click.option("--loop", "loop_path", required=True)
+@click.option("--out", required=True, help="HTML file to write.")
+def report_cmd(loop_path, out):
+    """One self-contained HTML page: curve, cycles, receipts."""
+    from polyloop.report import build
+
+    cfg, store = _store(loop_path)
+    Path(out).expanduser().write_text(build(store, cfg))
+    click.echo(f"wrote {out}")
+
+
 @main.group("tasks")
 def tasks():
     """Build task pools."""
