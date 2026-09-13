@@ -27,15 +27,21 @@ def _tolerate_logprob_length_mismatch(rl_train) -> None:
     log = logging.getLogger("polyloop.train")
 
     def tolerant(data_D, training_logprobs_D):
-        bad = [i for i, (d, lp) in enumerate(zip(data_D, training_logprobs_D))
-               if len(lp) != len(d.model_input.to_ints())]
-        if not bad:
+        try:
             return original(data_D, training_logprobs_D)
-        log.warning("logprob length mismatch on %d/%d datums; KL metric skipped this step", len(bad), len(data_D))
-        keep = [i for i in range(len(data_D)) if i not in set(bad)]
-        out = dict(original([data_D[i] for i in keep], [training_logprobs_D[i] for i in keep])) if keep else {}
-        out["polyloop/logprob_len_mismatch"] = float(len(bad))
-        return out
+        except (IndexError, RuntimeError, ValueError) as exc:
+            keep = []
+            for i, (d, lp) in enumerate(zip(data_D, training_logprobs_D)):
+                try:
+                    original([d], [lp])
+                    keep.append(i)
+                except (IndexError, RuntimeError, ValueError):
+                    pass
+            bad = len(data_D) - len(keep)
+            log.warning("logprob length mismatch on %d/%d datums (%s); KL metric computed on the rest", bad, len(data_D), exc)
+            out = dict(original([data_D[i] for i in keep], [training_logprobs_D[i] for i in keep])) if keep else {}
+            out["polyloop/logprob_len_mismatch"] = float(bad)
+            return out
 
     rl_train.compute_kl_sample_train = tolerant
 
