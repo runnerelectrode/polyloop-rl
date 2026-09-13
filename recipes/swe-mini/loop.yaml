@@ -15,7 +15,7 @@ stages:
     max_steps_off_policy: 0
     learning_rate: 1.0e-5
     max_tokens: 4096
-    max_turns: 30
+    max_turns: 50
     max_trajectory_tokens: 28672
     lora_rank: 32
     loss: importance_sampling
