@@ -130,6 +130,19 @@ def report_cmd(loop_path, out):
     click.echo(f"wrote {out}")
 
 
+@main.command("ui")
+@click.option("--loop", "loop_path", required=True)
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", type=int, default=8080, show_default=True)
+@click.option("--refresh", type=int, default=15, show_default=True, help="Auto-refresh seconds.")
+def ui_cmd(loop_path, host, port, refresh):
+    """Live page: current cycle, episodes as they land, training metrics, GPUs."""
+    from polyloop.ui import serve
+
+    cfg, store = _store(loop_path)
+    serve(cfg, store, host, port, refresh)
+
+
 @main.group("tasks")
 def tasks():
     """Build task pools."""
