@@ -14,6 +14,32 @@ import sys
 from pathlib import Path
 
 
+def _tolerate_logprob_length_mismatch(rl_train) -> None:
+    """The cookbook's sample-vs-train KL metric indexes the server's returned per-token
+    logprobs with the datum's action mask. On long packed episodes SkyRL's fused LM-head
+    path has returned fewer logprobs than tokens (seen: 14189 for a 16071-token datum), which
+    raises IndexError and kills the run after a successful optimizer step. The metric is
+    diagnostic only (the loss is computed server-side), so skip it and count the mismatch
+    instead of dying. Tracked as a server-side issue to fix upstream."""
+    import logging
+
+    original = rl_train.compute_kl_sample_train
+    log = logging.getLogger("polyloop.train")
+
+    def tolerant(data_D, training_logprobs_D):
+        bad = [i for i, (d, lp) in enumerate(zip(data_D, training_logprobs_D))
+               if len(lp) != len(d.model_input.to_ints())]
+        if not bad:
+            return original(data_D, training_logprobs_D)
+        log.warning("logprob length mismatch on %d/%d datums; KL metric skipped this step", len(bad), len(data_D))
+        keep = [i for i in range(len(data_D)) if i not in set(bad)]
+        out = dict(original([data_D[i] for i in keep], [training_logprobs_D[i] for i in keep])) if keep else {}
+        out["polyloop/logprob_len_mismatch"] = float(len(bad))
+        return out
+
+    rl_train.compute_kl_sample_train = tolerant
+
+
 def main(spec_path: str) -> int:
     spec = json.loads(Path(spec_path).read_text())
     from rlcli.compat import as_loss_fn
@@ -65,6 +91,7 @@ def main(spec_path: str) -> int:
         kwargs["async_config"] = rl_train.AsyncConfig(
             max_steps_off_policy=st["max_steps_off_policy"], groups_per_batch=st["groups_per_batch"])
     config = rl_train.Config(**kwargs)
+    _tolerate_logprob_length_mismatch(rl_train)
     guarded = logprob_guard.install(threshold=spec.get("logprob_abs_diff_max", 0.05))
     print(f"[polyloop.train] {len(tasks)} tasks, {st['steps']} steps, logprob guard={'on' if guarded else 'OFF'}", flush=True)
     asyncio.run(rl_train.main(config))
