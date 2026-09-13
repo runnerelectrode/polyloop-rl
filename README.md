@@ -68,7 +68,18 @@ polyloop run  --loop recipes/swe-mini/loop.yaml                      # one full 
 polyloop history --loop recipes/swe-mini/loop.yaml                   # cycles, deltas, lineage
 polyloop approve --loop recipes/swe-mini/loop.yaml <cycle-id>        # promote a gated candidate
 polyloop run  --loop recipes/swe-mini/loop.yaml --cycle <cycle-id>   # resume a cycle at its next stage
+polyloop report --loop recipes/swe-mini/loop.yaml --out report.html  # static page: curve, cycles, receipts
+polyloop ui   --loop recipes/swe-mini/loop.yaml --port 8080          # live page on the node (stdlib server)
 ```
+
+To watch a run from your laptop, forward the node's port and open the page locally:
+
+```bash
+ssh -N -L 8080:127.0.0.1:8080 ubuntu@<node>     # then open http://localhost:8080
+```
+
+The page shows the current cycle's stage, sandboxes running, episodes as their rewards land,
+the last training steps, GPU load, and the held-out curve and receipts from every cycle so far.
 
 `loop.yaml` (see `recipes/swe-mini/`) declares the stage, the sandbox limits, the filter, the budget,
 the gate and the promote mode. `program.md` next to it says what a proposing agent may change.
