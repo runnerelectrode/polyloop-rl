@@ -134,13 +134,14 @@ def report_cmd(loop_path, out):
 @click.option("--loop", "loop_path", required=True)
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", type=int, default=8080, show_default=True)
-@click.option("--refresh", type=int, default=15, show_default=True, help="Auto-refresh seconds.")
-def ui_cmd(loop_path, host, port, refresh):
-    """Live page: current cycle, episodes as they land, training metrics, GPUs."""
+@click.option("--refresh", type=int, default=5, show_default=True, help="Poll interval in seconds (updates in place, no reload).")
+@click.option("--log", "log_path", default=None, help="A log file to tail on the page (e.g. the `polyloop run` output).")
+def ui_cmd(loop_path, host, port, refresh, log_path):
+    """Live page: current cycle, episodes as they land, training metrics, GPUs, a log tail."""
     from polyloop.ui import serve
 
     cfg, store = _store(loop_path)
-    serve(cfg, store, host, port, refresh)
+    serve(cfg, store, host, port, refresh, Path(log_path).expanduser() if log_path else None)
 
 
 @main.group("tasks")

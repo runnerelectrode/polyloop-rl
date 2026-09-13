@@ -40,7 +40,6 @@ def main(spec_path: str) -> int:
         grader_timeout=spec["sandbox"]["grader_timeout"], max_trajectory_tokens=st["max_trajectory_tokens"],
         sandbox_factory=local_docker_sandbox_factory,
     )
-    builder.eval_task_limit = 0
     kwargs = dict(
         learning_rate=st["learning_rate"], dataset_builder=builder, model_name=spec["model"],
         recipe_name="polyloop_rl", max_tokens=st["max_tokens"], log_path=spec["log_path"],

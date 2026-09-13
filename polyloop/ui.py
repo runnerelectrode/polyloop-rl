@@ -110,19 +110,64 @@ def live_section(store: LoopStore) -> str:
 """
 
 
-def page(store: LoopStore, cfg, refresh: int) -> str:
+def log_tail(path: Path | None, n: int = 60) -> str:
+    if not path or not path.exists():
+        return ""
+    try:
+        with path.open("rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 64_000))
+            lines = f.read().decode(errors="replace").splitlines()[-n:]
+    except OSError:
+        return ""
+    return "\n".join(l for l in lines if "unauthenticated requests" not in l and "HF_TOKEN" not in l)
+
+
+JS = """
+<script>
+(function(){
+  var every=%d*1000;
+  async function tick(){
+    try{
+      var r=await fetch('/fragment',{cache:'no-store'}); var h=await r.text();
+      var d=document.createElement('div'); d.innerHTML=h;
+      var live=document.getElementById('live'); if(live) live.innerHTML=d.querySelector('#live').innerHTML;
+      var lg=document.getElementById('log'); var nl=d.querySelector('#log');
+      if(lg&&nl){ var atBottom=lg.scrollHeight-lg.scrollTop-lg.clientHeight<40; lg.textContent=nl.textContent; if(atBottom) lg.scrollTop=lg.scrollHeight; }
+    }catch(e){}
+    setTimeout(tick,every);
+  }
+  setTimeout(tick,every);
+  var lg=document.getElementById('log'); if(lg) lg.scrollTop=lg.scrollHeight;
+})();
+</script>
+"""
+
+
+def fragment(store: LoopStore, log_path: Path | None) -> str:
+    return (f"<div id='live'>{live_section(store)}</div>"
+            f"<h2>Log</h2><pre id='log' style='max-height:360px;overflow:auto'>{html.escape(log_tail(log_path))}</pre>")
+
+
+def page(store: LoopStore, cfg, refresh: int, log_path: Path | None) -> str:
     report = build_report(store, cfg)
     head, _, rest = report.partition("<h1>")
-    return (f"{head}<meta http-equiv='refresh' content='{refresh}'><style>{LIVE_CSS}</style><h1>{rest}"
-            .replace("<h2>Held-out score per cycle</h2>", live_section(store) + "<h2>Held-out score per cycle</h2>", 1))
+    body = f"{head}<style>{LIVE_CSS}</style><h1>{rest}"
+    body = body.replace("<h2>Held-out score per cycle</h2>", fragment(store, log_path) + "<h2>Held-out score per cycle</h2>", 1)
+    return body + (JS % max(2, refresh))
 
 
-def serve(cfg, store: LoopStore, host: str, port: int, refresh: int = 15) -> None:
+def serve(cfg, store: LoopStore, host: str, port: int, refresh: int = 5, log_path: Path | None = None) -> None:
     class H(BaseHTTPRequestHandler):
         def do_GET(self):
-            body = page(store, cfg, refresh).encode()
+            if self.path.startswith("/fragment"):
+                body = fragment(store, log_path).encode()
+            else:
+                body = page(store, cfg, refresh, log_path).encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
