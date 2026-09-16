@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import click
@@ -121,6 +122,33 @@ def proxy_cmd(loop_path, host, port, max_tokens):
     cfg, _ = _store(loop_path)
     serve(host, port, base_url=cfg.base_url, model=cfg.model, renderer_name=cfg.renderer,
           runs_dir=cfg.runs_path, loop_name=cfg.name, default_max_tokens=max_tokens)
+
+
+@main.command("sessions")
+@click.option("--tasks", "tasks_dir", required=True, help="Task pool dir (train split).")
+@click.option("--n", type=int, default=10)
+@click.option("--proxy", default="http://127.0.0.1:8787", show_default=True)
+@click.option("--agent-config", default=None, help="mini-swe-agent yaml (default: recipes/pydantic-v2/agent.yaml)")
+@click.option("--python", "python_exe", default=sys.executable, help="Python with pydantic v2 + pytest for local sessions.")
+@click.option("--mini", "mini_bin", default="mini-swe-agent")
+@click.option("--env", "env_class", type=click.Choice(["local", "docker"]), default="local")
+@click.option("--parallel", type=int, default=1)
+@click.option("--seed", type=int, default=0)
+@click.option("--log-dir", default="~/polyloop-runs/sessions")
+def sessions_cmd(tasks_dir, n, proxy, agent_config, python_exe, mini_bin, env_class, parallel, seed, log_dir):
+    """Run real mini-swe-agent sessions through the proxy on pool tasks (laptop or night driver)."""
+    import random
+
+    from polyloop.sessions import run_many
+
+    pool = [d for d in sorted(Path(tasks_dir).expanduser().iterdir()) if (d / "task.toml").exists()]
+    rng = random.Random(seed)
+    chosen = rng.sample(pool, min(n, len(pool)))
+    cfg = Path(agent_config).expanduser() if agent_config else Path(__file__).resolve().parent.parent / "recipes" / "pydantic-v2" / "agent.yaml"
+    recs = run_many(chosen, parallel, agent_cfg=cfg, proxy=proxy, python=python_exe, mini_bin=mini_bin,
+                    log_dir=Path(log_dir).expanduser(), env_class=env_class)
+    ok = sum(1 for r in recs if r.get("passed_strict"))
+    click.echo(f"{len(recs)} sessions, {ok} passed strict verify, log {Path(log_dir).expanduser()}/sessions.jsonl")
 
 
 @main.command("warm")

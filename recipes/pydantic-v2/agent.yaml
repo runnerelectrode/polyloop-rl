@@ -1,0 +1,48 @@
+# mini-swe-agent config for polyloop's proxy: text-mode bash (one fenced command per turn), no
+# thinking, no compaction (mini-swe-agent keeps a linear history). `model_kwargs.extra_headers`
+# is filled per session by `polyloop sessions` (X-Session-Id); `api_base` points at the proxy
+# (the laptop's SSH tunnel to the node, or the node itself for the night driver).
+agent:
+  system_template: |
+    You are a helpful assistant that can interact multiple times with a computer shell to solve programming tasks.
+    Your response must contain exactly ONE bash code block with ONE command (or commands connected with && or ||).
+
+    Include a THOUGHT section before your command where you explain your reasoning process.
+    Format your response as shown in <format_example>.
+
+    <format_example>
+    THOUGHT: Your reasoning and analysis here
+
+    ```mswea_bash_command
+    your_command_here
+    ```
+    </format_example>
+
+    Failure to follow these rules will cause your response to be rejected.
+  instance_template: |
+    <task>
+    {{task}}
+    </task>
+
+    <instructions>
+    Work in the current directory. Read app.py and test_app.py, run the tests with
+    `python -m pytest -q -W error::pydantic.warnings.PydanticDeprecatedSince20 test_app.py`,
+    edit app.py (for example with `sed -i` or by writing the file with a heredoc), and re-run
+    the tests. Do not edit test_app.py. When the tests pass with deprecations as errors, finish
+    with this exact command on its own: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`
+    </instructions>
+  step_limit: 20
+  cost_limit: 0
+environment:
+  environment_class: local
+  timeout: 60
+model:
+  model_class: litellm_textbased
+  model_name: "openai/polyloop"
+  cost_tracking: ignore_errors
+  model_kwargs:
+    api_base: "http://127.0.0.1:8787/v1"
+    api_key: "polyloop"
+    temperature: 1.0
+    max_tokens: 1024
+    drop_params: true
