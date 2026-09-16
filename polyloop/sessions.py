@@ -47,7 +47,11 @@ def run_one(task_dir: Path, *, agent_cfg: Path, proxy: str, python: str, mini_bi
         shutil.copy(task_dir / "environment" / f, work / f)
     cfg["environment"] = {"environment_class": env_class, "timeout": 60}
     if env_class == "docker":
-        cfg["environment"].update({"image": image, "cwd": "/testbed"})
+        # per-task image: base image + the task's app.py/test_app.py (cached by task name)
+        tag = f"plsess-{task_dir.name.lower()}"
+        subprocess.run(["docker", "build", "-q", "-t", tag, "-f", str(task_dir / "environment" / "Dockerfile"),
+                        str(task_dir / "environment")], capture_output=True, text=True, timeout=600)
+        cfg["environment"].update({"image": tag, "cwd": "/testbed"})
     else:
         cfg["environment"].update({"cwd": str(work), "env": {"PATH": str(Path(python).parent) + ":" + os.environ.get("PATH", "")}})
     cfg_path = work / "agent.yaml"
