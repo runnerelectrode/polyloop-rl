@@ -65,6 +65,10 @@ def warm(base_url: str, model: str, rank: int = 32, timeout: float = 2400.0, log
     resp = fut.result(timeout=timeout) if "timeout" in fut.result.__code__.co_varnames else fut.result()
     path = getattr(resp, "path", None)
     log(f"engine warm in {time.monotonic() - t0:.0f}s ({path})")
+    # The engines live only while a session is alive: when the warming process exits, SkyRL
+    # expires the session, unloads the model and tears the inference engines down. Long-lived
+    # callers (the proxy) keep the returned client referenced for their whole lifetime.
+    warm.last_client = tc  # type: ignore[attr-defined]
     return path or ""
 
 

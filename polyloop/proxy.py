@@ -133,10 +133,13 @@ def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: 
     from tinker_cookbook.renderers import get_renderer
     from tinker_cookbook.tokenizer_utils import get_tokenizer
 
-    from polyloop.harness.rollout import prepare_env
+    from polyloop.harness.rollout import prepare_env, warm
 
     prepare_env(base_url)
     loop_dir = runs_dir / loop_name
+    # Hold a training session for the proxy's lifetime so the sampler engines stay resident.
+    warm(base_url, model, log=print)
+    keepalive = warm.last_client  # noqa: F841  (referenced below via app state)
     live_path = loop_dir / "live.json"
     service = tinker.ServiceClient(base_url=base_url)
     rname = renderer_name or get_recommended_renderer_name(model)
@@ -211,6 +214,7 @@ def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: 
         return web.json_response({"live": deps.model_label, "pending_sessions": len(store.pending),
                                   "traces_dir": str(store.root)})
 
+    inner["polyloop_keepalive"] = keepalive
     inner.router.add_post("/admin/promote", promote)
     inner.router.add_post("/admin/session/{session}/done", session_done)
     inner.router.add_get("/admin/status", status)
