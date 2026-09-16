@@ -1,0 +1,101 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='1240' height='640' viewBox='0 0 1240 640'>
+<defs><marker id='a' markerWidth='10' markerHeight='10' refX='9' refY='5' orient='auto'><path d='M0,0 L10,5 L0,10 z' fill='#1f2933'/></marker></defs>
+<rect width='1240' height='640' fill='white'/>
+<text x='24' y='34' font-family='Helvetica, Arial, sans-serif' font-size='20' font-weight='700' fill='#1f2933' text-anchor='start'>polyloop-rl: daytime traffic in, gated adapter out</text>
+<rect x='24' y='90' width='250' height='96' rx='10' fill='#e3f1ff' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='36' y='112' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>coding agent</text>
+<text x='36' y='132' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>mini-swe-agent, Claude Code, any</text>
+<text x='36' y='148' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>OpenAI- or Anthropic-compatible client</text>
+<text x='36' y='164' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>X-Session-Id · X-Turn-Type · X-Session-Done</text>
+<rect x='470' y='90' width='270' height='96' rx='10' fill='#fff4d6' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='482' y='112' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>polyloop proxy  :8787</text>
+<text x='482' y='132' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>tinker-cookbook capture proxy</text>
+<text x='482' y='148' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>pairs turn t with the next state</text>
+<text x='482' y='164' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>serves the adapter named in live.json</text>
+<rect x='800' y='90' width='240' height='96' rx='10' fill='#e9f7ef' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='812' y='112' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>SkyRL Tinker server</text>
+<text x='812' y='132' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>trainer GPU + sampler GPU (vLLM)</text>
+<text x='812' y='148' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>LoRA, multi-adapter, Megatron</text>
+<text x='812' y='164' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>rlcli serve start</text>
+<polyline points='274,138 470,138' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<text x='372' y='132' font-family='Helvetica, Arial, sans-serif' font-size='11' font-weight='400' fill='#52606d' text-anchor='middle'>chat completions</text>
+<polyline points='740,138 800,138' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<text x='770' y='132' font-family='Helvetica, Arial, sans-serif' font-size='11' font-weight='400' fill='#52606d' text-anchor='middle'>sample</text>
+<rect x='24' y='222' width='250' height='66' rx='10' fill='#fde8e8' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='36' y='244' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>task pool</text>
+<text x='36' y='264' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>Harbor tasks + verifier, train / holdout split</text>
+<text x='36' y='280' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>polyloop tasks pydantic-v2 | swesmith | split</text>
+<rect x='470' y='222' width='270' height='66' rx='10' fill='#f5f7fa' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='482' y='244' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>traces/&lt;date&gt;.jsonl</text>
+<text x='482' y='264' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>one line per assistant turn:</text>
+<text x='482' y='280' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>messages, response, tool calls, next_state</text>
+<polyline points='605,186 605,222' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<text x='640' y='210' font-family='Helvetica, Arial, sans-serif' font-size='11' font-weight='400' fill='#52606d' text-anchor='middle'>records</text>
+<polyline points='149,288 149,350' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<text x='160' y='306' font-family='Helvetica, Arial, sans-serif' font-size='11' font-weight='400' fill='#52606d' text-anchor='start'>pin pool + holdout</text>
+<polyline points='640,288 640,350' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<text x='652' y='304' font-family='Helvetica, Arial, sans-serif' font-size='11' font-weight='400' fill='#52606d' text-anchor='start'>rows + hindsight hint → OPSD</text>
+<polyline points='920,186 920,318 427,318' fill='none' stroke='#1f2933' stroke-width='1.4' stroke-dasharray='5 4'/>
+<polyline points='427,318 427,350' fill='none' stroke='#1f2933' stroke-width='1.4' stroke-dasharray='5 4' marker-end='url(#a)'/>
+<polyline points='560,318 560,350' fill='none' stroke='#1f2933' stroke-width='1.4' stroke-dasharray='5 4' marker-end='url(#a)'/>
+<polyline points='755,318 755,350' fill='none' stroke='#1f2933' stroke-width='1.4' stroke-dasharray='5 4' marker-end='url(#a)'/>
+<text x='925' y='260' font-family='Helvetica, Arial, sans-serif' font-size='11' font-weight='400' fill='#52606d' text-anchor='start'>train + sample over the Tinker API</text>
+<text x='24' y='338' font-family='Helvetica, Arial, sans-serif' font-size='13' font-weight='700' fill='#1f2933' text-anchor='start'>one cycle  (polyloop run --loop loop.yaml)</text>
+<rect x='24' y='350' width='150' height='74' rx='10' fill='#f3eefc' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='36' y='372' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>snapshot</text>
+<text x='36' y='392' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>pin pool, holdout,</text>
+<text x='36' y='408' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>incumbent, trace files</text>
+<rect x='188' y='350' width='150' height='74' rx='10' fill='#f3eefc' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='200' y='372' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>preflight</text>
+<text x='200' y='392' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>docker, server,</text>
+<text x='200' y='408' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>disk, staleness</text>
+<rect x='352' y='350' width='150' height='74' rx='10' fill='#f3eefc' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='364' y='372' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>filter</text>
+<text x='364' y='392' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>pass rate under the</text>
+<text x='364' y='408' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>incumbent, keep 0&lt;p&lt;1</text>
+<rect x='516' y='350' width='150' height='74' rx='10' fill='#f3eefc' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='528' y='372' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>train</text>
+<text x='528' y='392' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>rl: cookbook Harbor RL</text>
+<text x='528' y='408' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>opsd: hinted self-distill</text>
+<rect x='680' y='350' width='150' height='74' rx='10' fill='#f3eefc' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='692' y='372' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>evaluate</text>
+<text x='692' y='392' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>candidate vs incumbent,</text>
+<text x='692' y='408' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>same holdout, K repeats</text>
+<rect x='844' y='350' width='150' height='74' rx='10' fill='#f3eefc' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='856' y='372' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>gate</text>
+<text x='856' y='392' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>paired bootstrap CI,</text>
+<text x='856' y='408' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>regressions, logprobs</text>
+<rect x='1008' y='350' width='150' height='74' rx='10' fill='#f3eefc' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='1020' y='372' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>promote</text>
+<text x='1020' y='392' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>approve or auto;</text>
+<text x='1020' y='408' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>writes live.json</text>
+<polyline points='174,387 188,387' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<polyline points='338,387 352,387' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<polyline points='502,387 516,387' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<polyline points='666,387 680,387' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<polyline points='830,387 844,387' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<polyline points='994,387 1008,387' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<rect x='24' y='490' width='456' height='120' rx='10' fill='#f5f7fa' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='36' y='512' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>polyloop ui  /  polyloop report</text>
+<text x='36' y='532' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>stage, sandboxes, rewards as they land, last train steps, GPU load,</text>
+<text x='36' y='548' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>sessions through the proxy, the live adapter,</text>
+<text x='36' y='564' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>held-out curve and the receipt of every cycle</text>
+<rect x='520' y='490' width='380' height='120' rx='10' fill='#f5f7fa' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='532' y='512' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>runs/&lt;loop&gt;/cycles/&lt;id&gt;/</text>
+<text x='532' y='532' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>events.jsonl   append-only stage events (resume, audit)</text>
+<text x='532' y='548' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>state.json     where to resume</text>
+<text x='532' y='564' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>receipt.json   promotion_receipt.v1: paired delta, CI95,</text>
+<text x='532' y='580' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>               W/L/T, checks, gpu-seconds</text>
+<rect x='930' y='490' width='286' height='120' rx='10' fill='#f5f7fa' stroke='#9aa5b1' stroke-width='1.2'/>
+<text x='942' y='512' font-family='Helvetica, Arial, sans-serif' font-size='14' font-weight='700' fill='#1f2933' text-anchor='start'>runs/&lt;loop&gt;/live.json</text>
+<text x='942' y='532' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>sampler_path of the promoted adapter</text>
+<text x='942' y='548' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>lineage.json: every promotion</text>
+<text x='942' y='564' font-family='Helvetica, Arial, sans-serif' font-size='12' font-weight='400' fill='#52606d' text-anchor='start'>POST /admin/promote reloads the proxy</text>
+<polyline points='919,424 919,456 710,456 710,490' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<text x='800' y='450' font-family='Helvetica, Arial, sans-serif' font-size='11' font-weight='400' fill='#52606d' text-anchor='middle'>receipt</text>
+<polyline points='1083,424 1083,490' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<text x='1095' y='462' font-family='Helvetica, Arial, sans-serif' font-size='11' font-weight='400' fill='#52606d' text-anchor='start'>promoted</text>
+<polyline points='520,550 480,550' fill='none' stroke='#1f2933' stroke-width='1.4' marker-end='url(#a)'/>
+<polyline points='1180,490 1180,62 605,62 605,90' fill='none' stroke='#1f2933' stroke-width='1.4' stroke-dasharray='5 4' marker-end='url(#a)'/>
+<text x='892' y='56' font-family='Helvetica, Arial, sans-serif' font-size='11' font-weight='400' fill='#52606d' text-anchor='middle'>the proxy serves the promoted adapter, the agent changes nothing</text>
+</svg>
