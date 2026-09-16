@@ -52,7 +52,7 @@ export RLCLI_SKYRL_SOURCE=$HOME/work/SkyRL RAY_ENABLE_UV_RUN_RUNTIME_ENV=0 RLCLI
 export SKYRL_WAIT_UNTIL_INFERENCE_SERVER_HEALTHY_TIMEOUT_S=2400
 export SKYRL_GENERATE_CONCURRENCY_PER_ENGINE=${SKYRL_GENERATE_CONCURRENCY_PER_ENGINE:-8}
 exec ~/venvs/rlcli/bin/rlcli serve start --base-model Qwen/Qwen3.5-9B --backend megatron --gpus 1 --tp 1 --max-model-len 32768 \
-  --backend-config '{"trainer.placement.colocate_all": false, "trainer.policy.megatron_config.lora_config.merge_lora": false, "trainer.policy.model.lora.max_loras": 4, "trainer.policy.model.lora.max_cpu_loras": 8, "trainer.policy.language_model_only": true, "trainer.logprobs_chunk_size": 1024, "trainer.fused_lm_head_logprob": true, "trainer.micro_train_batch_size_per_gpu": 1, "trainer.micro_forward_batch_size_per_gpu": 1, "trainer.max_tokens_per_microbatch": 16384, "generator.inference_engine.enforce_eager": false, "generator.inference_engine.engine_init_kwargs": {"enforce_eager": false, "max_model_len": 32768, "enable_prefix_caching": true}}' \
+  --backend-config '{"trainer.placement.colocate_all": false, "trainer.policy.megatron_config.lora_config.merge_lora": false, "trainer.policy.model.lora.max_loras": 4, "trainer.policy.model.lora.max_cpu_loras": 8, "trainer.policy.language_model_only": true, "trainer.logprobs_chunk_size": 1024, "trainer.fused_lm_head_logprob": true, "trainer.micro_train_batch_size_per_gpu": 1, "trainer.micro_forward_batch_size_per_gpu": 1, "trainer.max_tokens_per_microbatch": 16384, "generator.inference_engine.enforce_eager": false, "generator.inference_engine.engine_init_kwargs": {"enforce_eager": false, "max_model_len": 32768, "enable_prefix_caching": true, "max_num_seqs": 64}}' \
   --wait 3600
 EOF
 chmod +x ~/serve.sh
