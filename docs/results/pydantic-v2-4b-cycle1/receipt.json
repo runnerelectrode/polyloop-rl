@@ -1,0 +1,97 @@
+{
+  "candidate": {
+    "cycle": "20260916T081514Z",
+    "id": "pydantic-v2-4b-20260916T081514Z",
+    "parent": "base",
+    "sampler_path": "tinker://model_f979dedb/final",
+    "stages": [
+      {
+        "sampler_path": "tinker://model_3cb4b4dd/final",
+        "stage": "rl",
+        "steps": 3
+      },
+      {
+        "sampler_path": "tinker://model_f979dedb/final",
+        "stage": "opsd",
+        "steps": 2
+      }
+    ],
+    "state_path": "tinker://model_f979dedb/weights/final",
+    "step": 2
+  },
+  "checks": {
+    "enough_tasks": true,
+    "logprob_agreement": true,
+    "paired_delta_above_min": false,
+    "regressions_within_cap": false
+  },
+  "cycle": "20260916T081514Z",
+  "decision": "reject",
+  "gpu_seconds": {
+    "evaluate.candidate": 919.7130897719999,
+    "evaluate.incumbent": 856.3810768120002,
+    "filter": 1190.4526458220007,
+    "preflight": 93.40956262600048,
+    "train": 3413.111028276
+  },
+  "holdout": {
+    "dataset": "~/polyloop-tasks/pydantic-v2/holdout",
+    "id": "holdout-24-1aa1d35c3cd37134",
+    "n": 24,
+    "repeats": 4,
+    "temperature": 1.0
+  },
+  "incumbent": {
+    "id": "base"
+  },
+  "logprob_abs_diff_max": null,
+  "loop": "pydantic-v2-4b",
+  "model": "Qwen/Qwen3.5-4B",
+  "paired": {
+    "candidate_mean": 0.875,
+    "delta_ci95": [
+      -0.041666666666666664,
+      0.10416666666666667
+    ],
+    "incumbent_mean": 0.84375,
+    "losses": 4,
+    "mean_delta": 0.03125,
+    "n_tasks": 24,
+    "ties": 14,
+    "wins": 6
+  },
+  "promote_mode": "approve",
+  "schema": "promotion_receipt.v1",
+  "thresholds": {
+    "logprob_abs_diff_max": 0.05,
+    "max_regressions": 2,
+    "min_delta": 0.1,
+    "tie_band": 0.01
+  },
+  "train": {
+    "stage": {
+      "group_size": 4,
+      "groups_per_batch": 8,
+      "harness": "cookbook-bash",
+      "kind": "rl",
+      "kl_discount_factor": 0.0,
+      "kl_penalty_coef": 1.0,
+      "learning_rate": 1e-05,
+      "lora_rank": 32,
+      "loss": "importance_sampling",
+      "max_hint_chars": 2000,
+      "max_steps_off_policy": 0,
+      "max_tokens": 2048,
+      "max_trajectory_tokens": 12288,
+      "max_turns": 20,
+      "min_rows": 8,
+      "save_every": 2,
+      "steps": 3,
+      "teacher": null,
+      "teacher_hint": null
+    },
+    "steps": 5,
+    "tasks": 13
+  },
+  "ts": "2026-09-16T09:18:26+00:00"
+}

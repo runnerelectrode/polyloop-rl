@@ -1,0 +1,217 @@
+{
+  "candidate": {
+    "cycle": "20260916T081514Z",
+    "id": "pydantic-v2-4b-20260916T081514Z",
+    "parent": "base",
+    "sampler_path": "tinker://model_f979dedb/final",
+    "stages": [
+      {
+        "sampler_path": "tinker://model_3cb4b4dd/final",
+        "stage": "rl",
+        "steps": 3
+      },
+      {
+        "sampler_path": "tinker://model_f979dedb/final",
+        "stage": "opsd",
+        "steps": 2
+      }
+    ],
+    "state_path": "tinker://model_f979dedb/weights/final",
+    "step": 2
+  },
+  "decision": "reject",
+  "eval_candidate": {
+    "test_create_model__test_inheritance_validators_always": 0.75,
+    "test_fields__test_computed_field_raises_correct_attribute_error": 1.0,
+    "test_fields__test_rebuild_model_fields_preserves_description": 0.75,
+    "test_json__test_json_inf_nan_allow": 0.75,
+    "test_main__test_allow_extra": 1.0,
+    "test_main__test_allow_extra_repr": 1.0,
+    "test_main__test_arbitrary_type_allowed_validation_success": 1.0,
+    "test_main__test_assign_extra_validate": 0.75,
+    "test_main__test_dict_exclude_unset_populated_by_alias": 1.0,
+    "test_main__test_dict_exclude_unset_populated_by_alias_with_extra": 1.0,
+    "test_main__test_dict_with_extra_keys": 1.0,
+    "test_main__test_frozen_field_with_validate_assignment": 1.0,
+    "test_main__test_frozen_model": 1.0,
+    "test_main__test_frozen_with_hashable_fields_are_hashable": 1.0,
+    "test_main__test_hash_function_empty_model": 1.0,
+    "test_main__test_hash_function_give_different_result_for_different_object": 1.0,
+    "test_main__test_model_validate_strict": 1.0,
+    "test_main__test_reassign_instance_method_with_extra_allow": 1.0,
+    "test_model_validator__test_subclass": 1.0,
+    "test_parse__test_model_validate_root": 0.5,
+    "test_parse__test_parse_nested_root_list": 0.0,
+    "test_parse__test_parse_root_list": 0.5,
+    "test_serialize__test_serialize_extra_allow_subclass_1": 1.0,
+    "test_serialize__test_serialize_extra_allow_subclass_2": 1.0
+  },
+  "eval_incumbent": {
+    "test_create_model__test_inheritance_validators_always": 0.75,
+    "test_fields__test_computed_field_raises_correct_attribute_error": 1.0,
+    "test_fields__test_rebuild_model_fields_preserves_description": 1.0,
+    "test_json__test_json_inf_nan_allow": 0.5,
+    "test_main__test_allow_extra": 1.0,
+    "test_main__test_allow_extra_repr": 1.0,
+    "test_main__test_arbitrary_type_allowed_validation_success": 0.75,
+    "test_main__test_assign_extra_validate": 1.0,
+    "test_main__test_dict_exclude_unset_populated_by_alias": 0.5,
+    "test_main__test_dict_exclude_unset_populated_by_alias_with_extra": 1.0,
+    "test_main__test_dict_with_extra_keys": 1.0,
+    "test_main__test_frozen_field_with_validate_assignment": 0.75,
+    "test_main__test_frozen_model": 1.0,
+    "test_main__test_frozen_with_hashable_fields_are_hashable": 1.0,
+    "test_main__test_hash_function_empty_model": 1.0,
+    "test_main__test_hash_function_give_different_result_for_different_object": 1.0,
+    "test_main__test_model_validate_strict": 0.75,
+    "test_main__test_reassign_instance_method_with_extra_allow": 1.0,
+    "test_model_validator__test_subclass": 1.0,
+    "test_parse__test_model_validate_root": 0.5,
+    "test_parse__test_parse_nested_root_list": 0.25,
+    "test_parse__test_parse_root_list": 0.75,
+    "test_serialize__test_serialize_extra_allow_subclass_1": 0.75,
+    "test_serialize__test_serialize_extra_allow_subclass_2": 1.0
+  },
+  "failed_stage": null,
+  "gpu_seconds": {
+    "evaluate.candidate": 919.7130897719999,
+    "evaluate.incumbent": 856.3810768120002,
+    "filter": 1190.4526458220007,
+    "preflight": 93.40956262600048,
+    "train": 3413.111028276
+  },
+  "holdout_id": "holdout-24-1aa1d35c3cd37134",
+  "holdout_names": [
+    "test_create_model__test_inheritance_validators_always",
+    "test_fields__test_computed_field_raises_correct_attribute_error",
+    "test_fields__test_rebuild_model_fields_preserves_description",
+    "test_json__test_json_inf_nan_allow",
+    "test_main__test_allow_extra",
+    "test_main__test_allow_extra_repr",
+    "test_main__test_arbitrary_type_allowed_validation_success",
+    "test_main__test_assign_extra_validate",
+    "test_main__test_dict_exclude_unset_populated_by_alias",
+    "test_main__test_dict_exclude_unset_populated_by_alias_with_extra",
+    "test_main__test_dict_with_extra_keys",
+    "test_main__test_frozen_field_with_validate_assignment",
+    "test_main__test_frozen_model",
+    "test_main__test_frozen_with_hashable_fields_are_hashable",
+    "test_main__test_hash_function_empty_model",
+    "test_main__test_hash_function_give_different_result_for_different_object",
+    "test_main__test_model_validate_strict",
+    "test_main__test_reassign_instance_method_with_extra_allow",
+    "test_model_validator__test_subclass",
+    "test_parse__test_model_validate_root",
+    "test_parse__test_parse_nested_root_list",
+    "test_parse__test_parse_root_list",
+    "test_serialize__test_serialize_extra_allow_subclass_1",
+    "test_serialize__test_serialize_extra_allow_subclass_2"
+  ],
+  "incumbent": null,
+  "logprob_abs_diff_max": null,
+  "loop": "pydantic-v2-4b",
+  "measured": 40,
+  "model": "Qwen/Qwen3.5-4B",
+  "paired": {
+    "candidate_mean": 0.875,
+    "delta_ci95": [
+      -0.041666666666666664,
+      0.10416666666666667
+    ],
+    "incumbent_mean": 0.84375,
+    "losses": 4,
+    "mean_delta": 0.03125,
+    "n_tasks": 24,
+    "ties": 14,
+    "wins": 6
+  },
+  "pool_dataset": "~/polyloop-tasks/pydantic-v2/train",
+  "pool_size": 41,
+  "reason": null,
+  "receipt": "/home/ubuntu/polyloop-runs/pydantic-v2-4b/cycles/20260916T081514Z/receipt.json",
+  "stage_summary": {
+    "evaluate": {
+      "tasks": 24
+    },
+    "filter": {
+      "contested": 13,
+      "measured": 40,
+      "newly_measured": 40,
+      "rounds": 2
+    },
+    "gate": {
+      "ci": [
+        -0.041666666666666664,
+        0.10416666666666667
+      ],
+      "decision": "reject",
+      "losses": 4,
+      "mean_delta": 0.03125,
+      "wins": 6
+    },
+    "preflight": {
+      "checks": [
+        "pool",
+        "holdout",
+        "docker",
+        "trainer",
+        "disk",
+        "staleness",
+        "engine-warm"
+      ]
+    },
+    "snapshot": {
+      "holdout": 24,
+      "holdout_id": "holdout-24-1aa1d35c3cd37134",
+      "incumbent": "base",
+      "pool": 41,
+      "trace_files": 1
+    },
+    "train": {
+      "candidate": "pydantic-v2-4b-20260916T081514Z",
+      "logprob_abs_diff_max": null,
+      "stages": [
+        {
+          "sampler_path": "tinker://model_3cb4b4dd/final",
+          "stage": "rl",
+          "steps": 3
+        },
+        {
+          "sampler_path": "tinker://model_f979dedb/final",
+          "stage": "opsd",
+          "steps": 2
+        }
+      ],
+      "steps": 5
+    }
+  },
+  "stages_done": [
+    "snapshot",
+    "preflight",
+    "filter",
+    "train",
+    "evaluate",
+    "gate"
+  ],
+  "started": "2026-09-16T08:15:16+00:00",
+  "status": "rejected",
+  "trace_files": [
+    "/home/ubuntu/polyloop-runs/pydantic-v2-4b/traces/2026-09-16.jsonl"
+  ],
+  "train_steps": 5,
+  "train_task_names": [
+    "test_json__test_subclass_custom_encoding",
+    "test_main__test_arbitrary_type_allowed_validation_fails",
+    "test_main__test_class_kwargs_config_and_attr_conflict",
+    "test_main__test_extra_broken_via_pydantic_extra_interference",
+    "test_main__test_extra_validator_named",
+    "test_main__test_extra_validator_scalar",
+    "test_main__test_frozen_model_cached_property",
+    "test_main__test_hash_function_works_when_instance_dict_modified",
+    "test_main__test_literal_use_enum_values_multi_type",
+    "test_main__test_union_enum_values",
+    "test_model_validator__test_model_validator_wrap",
+    "test_parse__test_parse_nested_custom_root",
+    "test_types_namedtuple__test_namedtuple_arbitrary_type"
+  ]
+}

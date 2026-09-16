@@ -1,0 +1,122 @@
+<title>pydantic-v2-4b loop</title><style>
+:root{--bg:#f6f4ee;--fg:#1d1b16;--mut:#6b675c;--line:#d9d4c7;--card:#fffdf8;--acc:#0b6e7a;--good:#2f7d32;--bad:#b3261e;--warn:#9a6b00}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15140f;--fg:#ece8dc;--mut:#a39d8e;--line:#2e2c24;--card:#1d1b15;--acc:#4fb3c0;--good:#7fc47f;--bad:#f28b82;--warn:#e0b34a}}
+:root[data-theme="dark"]{--bg:#15140f;--fg:#ece8dc;--mut:#a39d8e;--line:#2e2c24;--card:#1d1b15;--acc:#4fb3c0;--good:#7fc47f;--bad:#f28b82;--warn:#e0b34a}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;margin:0;padding-block:32px;padding-inline:clamp(16px,4vw,48px);max-width:1100px;margin-inline:auto}
+h1{font:600 28px/1.2 "IBM Plex Sans",system-ui,sans-serif;margin:0 0 4px}h2{font-size:18px;margin:36px 0 12px;text-wrap:balance}
+.sub{color:var(--mut)}.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mut);font-weight:500;letter-spacing:.02em;text-transform:uppercase;font-size:12px}
+.wrap{overflow-x:auto}.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;border:1px solid var(--line)}
+.promoted{color:var(--good);border-color:var(--good)}.rejected,.aborted,.failed{color:var(--bad);border-color:var(--bad)}.awaiting_approval{color:var(--warn);border-color:var(--warn)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.kv{background:var(--card);border:1px solid var(--line);padding:12px 14px}.kv b{display:block;font-size:22px;font-weight:600}.kv span{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+svg text{fill:var(--fg);font-size:11px}.axis{stroke:var(--line)}pre{background:var(--card);border:1px solid var(--line);padding:12px;overflow-x:auto;font-size:12px}
+</style>
+<h1>pydantic-v2-4b</h1>
+<p class='sub'>Qwen/Qwen3.5-4B · LoRA rank 32 · holdout ~/polyloop-tasks/pydantic-v2/holdout (n=24, K=4) · promote: approve</p>
+<div class='grid'>
+<div class='kv'><span>cycles</span><b>1</b></div>
+<div class='kv'><span>promoted</span><b>0</b></div>
+<div class='kv'><span>incumbent</span><b style='font-size:15px' class='mono'>base</b></div>
+<div class='kv'><span>pool measured / contested / solved</span><b>40 / 13 / 26</b></div>
+</div>
+<h2>Held-out score per cycle</h2><svg viewBox='0 0 720 260' width='100%' role='img' aria-label='held-out score per cycle'><line class='axis' x1='48' x2='704' y1='224.0' y2='224.0' stroke-width='1'/><text x='40' y='228.0' text-anchor='end'>0.00</text><line class='axis' x1='48' x2='704' y1='172.0' y2='172.0' stroke-width='1'/><text x='40' y='176.0' text-anchor='end'>0.25</text><line class='axis' x1='48' x2='704' y1='120.0' y2='120.0' stroke-width='1'/><text x='40' y='124.0' text-anchor='end'>0.50</text><line class='axis' x1='48' x2='704' y1='68.0' y2='68.0' stroke-width='1'/><text x='40' y='72.0' text-anchor='end'>0.75</text><line class='axis' x1='48' x2='704' y1='16.0' y2='16.0' stroke-width='1'/><text x='40' y='20.0' text-anchor='end'>1.00</text><polyline points='384.0,48.5' fill='none' stroke='var(--mut)' stroke-width='2' stroke-dasharray='4 3'/><polyline points='384.0,42.0' fill='none' stroke='var(--acc)' stroke-width='2'/><circle cx='384.0' cy='42.0' r='5' fill='var(--bad)'/><text x='384.0' y='240' text-anchor='middle'>081514Z</text><text x='48' y='14'>held-out mean reward · solid = candidate, dashed = incumbent · green dot = promoted</text></svg>
+<h2>Cycles</h2><div class='wrap'><table><tr><th>cycle</th><th>status</th><th>stages</th><th>train tasks</th><th>incumbent → candidate</th><th>paired Δ [95% CI]</th><th>W/L/T</th><th>logprob |Δ| max</th><th>GPU·h</th></tr><tr><td class='mono'>20260916T081514Z</td><td><span class='pill rejected'>rejected</span></td><td>6/8</td><td class='mono'>13</td><td class='mono'>0.844 → 0.875</td><td class='mono'>0.031 [-0.04, 0.10]</td><td class='mono'>6/4/14</td><td class='mono'>–</td><td class='mono'>1.80</td></tr></table></div>
+<h2>Mean stage duration</h2><div class='wrap'><table><tr><th>stage</th><th>mean</th></tr><tr><td>snapshot</td><td class='mono'>0.0 min</td></tr><tr><td>preflight</td><td class='mono'>0.8 min</td></tr><tr><td>filter</td><td class='mono'>9.9 min</td></tr><tr><td>train</td><td class='mono'>4.3 min</td></tr><tr><td>evaluate</td><td class='mono'>14.8 min</td></tr><tr><td>gate</td><td class='mono'>0.0 min</td></tr><tr><td>promote</td><td class='mono'>0.0 min</td></tr><tr><td>observe</td><td class='mono'>0.0 min</td></tr></table></div>
+<h2>Latest receipt</h2><pre>{
+ &quot;candidate&quot;: {
+  &quot;cycle&quot;: &quot;20260916T081514Z&quot;,
+  &quot;id&quot;: &quot;pydantic-v2-4b-20260916T081514Z&quot;,
+  &quot;parent&quot;: &quot;base&quot;,
+  &quot;sampler_path&quot;: &quot;tinker://model_f979dedb/final&quot;,
+  &quot;stages&quot;: [
+   {
+    &quot;sampler_path&quot;: &quot;tinker://model_3cb4b4dd/final&quot;,
+    &quot;stage&quot;: &quot;rl&quot;,
+    &quot;steps&quot;: 3
+   },
+   {
+    &quot;sampler_path&quot;: &quot;tinker://model_f979dedb/final&quot;,
+    &quot;stage&quot;: &quot;opsd&quot;,
+    &quot;steps&quot;: 2
+   }
+  ],
+  &quot;state_path&quot;: &quot;tinker://model_f979dedb/weights/final&quot;,
+  &quot;step&quot;: 2
+ },
+ &quot;checks&quot;: {
+  &quot;enough_tasks&quot;: true,
+  &quot;logprob_agreement&quot;: true,
+  &quot;paired_delta_above_min&quot;: false,
+  &quot;regressions_within_cap&quot;: false
+ },
+ &quot;cycle&quot;: &quot;20260916T081514Z&quot;,
+ &quot;decision&quot;: &quot;reject&quot;,
+ &quot;gpu_seconds&quot;: {
+  &quot;evaluate.candidate&quot;: 919.7130897719999,
+  &quot;evaluate.incumbent&quot;: 856.3810768120002,
+  &quot;filter&quot;: 1190.4526458220007,
+  &quot;preflight&quot;: 93.40956262600048,
+  &quot;train&quot;: 3413.111028276
+ },
+ &quot;holdout&quot;: {
+  &quot;dataset&quot;: &quot;~/polyloop-tasks/pydantic-v2/holdout&quot;,
+  &quot;id&quot;: &quot;holdout-24-1aa1d35c3cd37134&quot;,
+  &quot;n&quot;: 24,
+  &quot;repeats&quot;: 4,
+  &quot;temperature&quot;: 1.0
+ },
+ &quot;incumbent&quot;: {
+  &quot;id&quot;: &quot;base&quot;
+ },
+ &quot;logprob_abs_diff_max&quot;: null,
+ &quot;loop&quot;: &quot;pydantic-v2-4b&quot;,
+ &quot;model&quot;: &quot;Qwen/Qwen3.5-4B&quot;,
+ &quot;paired&quot;: {
+  &quot;candidate_mean&quot;: 0.875,
+  &quot;delta_ci95&quot;: [
+   -0.041666666666666664,
+   0.10416666666666667
+  ],
+  &quot;incumbent_mean&quot;: 0.84375,
+  &quot;losses&quot;: 4,
+  &quot;mean_delta&quot;: 0.03125,
+  &quot;n_tasks&quot;: 24,
+  &quot;ties&quot;: 14,
+  &quot;wins&quot;: 6
+ },
+ &quot;promote_mode&quot;: &quot;approve&quot;,
+ &quot;schema&quot;: &quot;promotion_receipt.v1&quot;,
+ &quot;thresholds&quot;: {
+  &quot;logprob_abs_diff_max&quot;: 0.05,
+  &quot;max_regressions&quot;: 2,
+  &quot;min_delta&quot;: 0.1,
+  &quot;tie_band&quot;: 0.01
+ },
+ &quot;train&quot;: {
+  &quot;stage&quot;: {
+   &quot;group_size&quot;: 4,
+   &quot;groups_per_batch&quot;: 8,
+   &quot;harness&quot;: &quot;cookbook-bash&quot;,
+   &quot;kind&quot;: &quot;rl&quot;,
+   &quot;kl_discount_factor&quot;: 0.0,
+   &quot;kl_penalty_coef&quot;: 1.0,
+   &quot;learning_rate&quot;: 1e-05,
+   &quot;lora_rank&quot;: 32,
+   &quot;loss&quot;: &quot;importance_sampling&quot;,
+   &quot;max_hint_chars&quot;: 2000,
+   &quot;max_steps_off_policy&quot;: 0,
+   &quot;max_tokens&quot;: 2048,
+   &quot;max_trajectory_tokens&quot;: 12288,
+   &quot;max_turns&quot;: 20,
+   &quot;min_rows&quot;: 8,
+   &quot;save_every&quot;: 2,
+   &quot;steps&quot;: 3,
+   &quot;teacher&quot;: null,
+   &quot;teacher_hint&quot;: null
+  },
+  &quot;steps&quot;: 5,
+  &quot;tasks&quot;: 13
+ },
+ &quot;ts&quot;: &quot;2026-09-16T09:18:26+00:00&quot;
+}</pre>
+<p class='sub'>Generated by <span class='mono'>polyloop report</span> from /home/ubuntu/polyloop-runs/pydantic-v2-4b.</p>
