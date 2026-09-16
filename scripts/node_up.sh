@@ -30,7 +30,16 @@ uv pip install -q --python ~/venvs/rlcli/bin/python -e "./rlcli[train]" "tinker-
 echo "== venv ok: $(~/venvs/rlcli/bin/python -c 'import polyloop, rlcli, tinker_cookbook; print("polyloop", polyloop.__version__)')"
 
 # SkyRL env for the server: sync once (megatron extra), drop torchcodec (cu13 wheel breaks vLLM import on cu128)
-cd ~/work/SkyRL && rm -f uv.lock && RAY_ENABLE_UV_RUN_RUNTIME_ENV=0 MAX_JOBS=16 uv sync -q --extra tinker --extra megatron
+cd ~/work/SkyRL && rm -f uv.lock
+# uv resolves every platform split unless told otherwise; a resolver conflict on the aarch64/other-arch
+# splits (seen 2026-09-16) has nothing to do with this node. Pin the environment.
+grep -q "^environments = " pyproject.toml || python3 - <<'PY'
+import re
+p="pyproject.toml"; s=open(p).read()
+s=s.replace("[tool.uv]\n", "[tool.uv]\nenvironments = [\"sys_platform == 'linux' and platform_machine == 'x86_64'\"]\n", 1)
+open(p,"w").write(s)
+PY
+RAY_ENABLE_UV_RUN_RUNTIME_ENV=0 MAX_JOBS=16 uv sync -q --extra tinker --extra megatron
 uv pip uninstall -q --python ~/work/SkyRL/.venv/bin/python torchcodec 2>/dev/null || true
 uv pip install -q --python ~/work/SkyRL/.venv/bin/python peft
 echo "== skyrl env ok"
