@@ -216,8 +216,14 @@ def extract_candidates(test_file: Path) -> list[Candidate]:
     defs = _module_defs(tree, src)
     out: list[Candidate] = []
     for fn in tree.body:
-        if not isinstance(fn, ast.FunctionDef) or not fn.name.startswith("test_") or fn.decorator_list or fn.args.args:
+        if not isinstance(fn, ast.FunctionDef) or not fn.name.startswith("test_"):
             continue
+        decos = [ast.unparse(d) for d in fn.decorator_list]
+        if any(not d.startswith("pytest.mark.parametrize") for d in decos):
+            continue
+        params = {a.arg for a in fn.args.args}
+        if fn.args.args and not decos:
+            continue  # fixtures, not parametrize
         classes = [s for s in fn.body if isinstance(s, ast.ClassDef)]
         rest = [s for s in fn.body if not isinstance(s, ast.ClassDef)]
         if not classes or not rest:
@@ -240,9 +246,16 @@ def extract_candidates(test_file: Path) -> list[Candidate]:
         body_src = "\n".join(_segment(src, s) for s in rest)
         if any(k in body_src for k in ("monkeypatch", "tmp_path", "capsys", "recwarn", "request.")):
             continue
+        if params and not (used & params) is False and (used & params):
+            continue  # hoisted classes must not depend on parametrize arguments
         helper_src = ("\n\n".join(helpers) + "\n\n\n") if helpers else ""
         app = "\n".join(imports) + "\n\n\n" + helper_src + class_src + "\n"
-        test = "\n".join(imports) + "\nfrom app import *  # noqa\n\n\ndef " + fn.name + "():\n" + textwrap.indent(body_src, "    ") + "\n"
+        if decos:
+            fn2 = ast.FunctionDef(name=fn.name, args=fn.args, body=rest, decorator_list=fn.decorator_list, returns=None, type_params=[])
+            ast.fix_missing_locations(fn2)
+            test = "\n".join(imports) + "\nfrom app import *  # noqa\n\n\n" + ast.unparse(fn2) + "\n"
+        else:
+            test = "\n".join(imports) + "\nfrom app import *  # noqa\n\n\ndef " + fn.name + "():\n" + textwrap.indent(body_src, "    ") + "\n"
         out.append(Candidate(test_file.name, fn.name, app, test))
     return out
 

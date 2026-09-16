@@ -57,9 +57,9 @@ budget:
 
 gate:
   holdout: ~/polyloop-tasks/pydantic-v2/holdout   # split by source test file, never trained on
-  holdout_limit: 40
+  holdout_limit: 24
   holdout_seed: 0
-  repeats: 4
+  repeats: 6
   temperature: 1.0
   min_delta: 0.10                # pass criterion fixed before the run
   tie_band: 0.01

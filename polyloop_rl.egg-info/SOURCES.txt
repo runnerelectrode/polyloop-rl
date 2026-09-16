@@ -5,13 +5,16 @@ polyloop/__init__.py
 polyloop/cli.py
 polyloop/config.py
 polyloop/events.py
+polyloop/proxy.py
 polyloop/receipt.py
 polyloop/report.py
 polyloop/stages.py
 polyloop/ui.py
 polyloop/harness/__init__.py
 polyloop/harness/rollout.py
+polyloop/harness/trace_rows.py
 polyloop/harness/train.py
+polyloop/harness/train_opsd.py
 polyloop/tasks/__init__.py
 polyloop/tasks/pydantic_v2.py
 polyloop/tasks/swesmith.py
