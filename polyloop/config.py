@@ -25,6 +25,13 @@ class StageConfig:
     lora_rank: int = 32
     loss: str = "importance_sampling"
     save_every: int = 4
+    # opsd-only
+    teacher: str | None = None            # None = same weights (self-distillation)
+    teacher_hint: str | None = None       # run-wide hint; rows carry their own from traces
+    kl_penalty_coef: float = 1.0
+    kl_discount_factor: float = 0.0
+    max_hint_chars: int = 2000
+    min_rows: int = 8
 
 
 @dataclass
@@ -88,6 +95,8 @@ class LoopConfig:
     base_url: str = "http://127.0.0.1:8000"
     runs_dir: str = "~/polyloop-runs"
     renderer: str | None = None
+    proxy_url: str | None = None          # polyloop proxy; promote posts the winner here
+    traces: str | None = None             # dir of proxy trace JSONL (default <runs>/<loop>/traces)
     stages: list[StageConfig] = field(default_factory=lambda: [StageConfig()])
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     filter: FilterConfig = field(default_factory=FilterConfig)
@@ -123,6 +132,8 @@ def load_loop(path: str | Path) -> LoopConfig:
         base_url=raw.pop("base_url", "http://127.0.0.1:8000"),
         runs_dir=raw.pop("runs_dir", "~/polyloop-runs"),
         renderer=raw.pop("renderer", None),
+        proxy_url=raw.pop("proxy_url", None),
+        traces=raw.pop("traces", None),
         stages=stages,
         sandbox=_build(SandboxConfig, raw.pop("sandbox", None)),
         filter=_build(FilterConfig, raw.pop("filter", None)),

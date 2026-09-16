@@ -41,10 +41,11 @@ def run(loop_path, cycle_id, upto):
 @click.argument("cycle_id")
 def approve_cmd(loop_path, cycle_id):
     """Promote a cycle's candidate that is awaiting approval."""
-    from polyloop.stages import approve
+    from polyloop.stages import approve, notify_proxy
 
-    _, store = _store(loop_path)
-    approve(store, cycle_id, log=click.echo)
+    cfg, store = _store(loop_path)
+    cand = approve(store, cycle_id, log=click.echo)
+    notify_proxy(cfg.proxy_url, cand, store.cycle(cycle_id).state.get("receipt"), log=click.echo)
 
 
 @main.command("history")
@@ -108,6 +109,20 @@ def eval_cmd(loop_path, dataset, limit, sampler_path, repeats, out):
     click.echo(f"{len(ok)}/{len(results)} tasks scored, mean reward {mean:.3f}, errors {len(results) - len(ok)}")
 
 
+@main.command("proxy")
+@click.option("--loop", "loop_path", required=True)
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", type=int, default=8787, show_default=True)
+@click.option("--max-tokens", type=int, default=4096, show_default=True)
+def proxy_cmd(loop_path, host, port, max_tokens):
+    """OpenAI/Anthropic-compatible endpoint for your coding agent; records sessions; serves the live adapter."""
+    from polyloop.proxy import serve
+
+    cfg, _ = _store(loop_path)
+    serve(host, port, base_url=cfg.base_url, model=cfg.model, renderer_name=cfg.renderer,
+          runs_dir=cfg.runs_path, loop_name=cfg.name, default_max_tokens=max_tokens)
+
+
 @main.command("warm")
 @click.option("--loop", "loop_path", required=True)
 def warm_cmd(loop_path):
@@ -147,6 +162,57 @@ def ui_cmd(loop_path, host, port, refresh, log_path):
 @main.group("tasks")
 def tasks():
     """Build task pools."""
+
+
+@tasks.command("pydantic-v2")
+@click.option("--pydantic-repo", required=True, help="Checkout of pydantic at a v2 tag.")
+@click.option("--python", "python_exe", required=True, help="Python with the same pydantic version + pytest, used for the filter.")
+@click.option("--out", required=True)
+@click.option("--limit", type=int, default=None)
+@click.option("--skip", default="test_docs.py,test_docs_extraction.py,test_mypy.py,test_plugins.py,test_plugin_loader.py,test_pickle.py,test_migration.py,test_deprecated.py,test_deprecated_fields.py,test_deprecated_validate_arguments.py,test_v1.py,test_exports.py,test_internal.py,test_dunder_all.py,test_meta.py,test_version.py,test_warnings.py")
+def tasks_pydantic(pydantic_repo, python_exe, out, limit, skip):
+    """pydantic's v2 tests -> v1-idiom migration tasks with a strict-deprecation verifier."""
+    from polyloop.tasks.pydantic_v2 import build
+
+    stats = build(Path(pydantic_repo).expanduser(), python_exe, Path(out).expanduser(), limit, set(skip.split(",")))
+    click.echo(json.dumps(stats, indent=1))
+
+
+@tasks.command("split")
+@click.option("--pool", required=True, help="Task pool dir (task subdirs).")
+@click.option("--out", required=True, help="Output dir; writes <out>/train and <out>/holdout.")
+@click.option("--holdout", "n_holdout", type=int, default=40)
+@click.option("--by", default="source_file", help="task.toml metadata key to group by (whole groups go to one side).")
+@click.option("--seed", type=int, default=0)
+def tasks_split(pool, out, n_holdout, by, seed):
+    """Split a pool into train/holdout by a grouping key so no source leaks across the split."""
+    import random
+    import shutil
+    import tomllib
+
+    pool_p, out_p = Path(pool).expanduser(), Path(out).expanduser()
+    tasks_ = [d for d in sorted(pool_p.iterdir()) if (d / "task.toml").exists()]
+    groups: dict[str, list[Path]] = {}
+    for d in tasks_:
+        meta = tomllib.loads((d / "task.toml").read_text()).get("metadata", {})
+        groups.setdefault(str(meta.get(by, d.name)), []).append(d)
+    keys = sorted(groups)
+    random.Random(seed).shuffle(keys)
+    hold, n = [], 0
+    for k in keys:
+        if n >= n_holdout:
+            break
+        hold.append(k)
+        n += len(groups[k])
+    for side, ks in (("holdout", hold), ("train", [k for k in keys if k not in hold])):
+        dest = out_p / side
+        dest.mkdir(parents=True, exist_ok=True)
+        for k in ks:
+            for d in groups[k]:
+                if not (dest / d.name).exists():
+                    shutil.copytree(d, dest / d.name)
+    click.echo(json.dumps({"groups": len(keys), "holdout_groups": hold, "holdout_tasks": n,
+                           "train_tasks": sum(len(groups[k]) for k in keys if k not in hold)}))
 
 
 @tasks.command("swesmith")

@@ -117,13 +117,15 @@ class Runner:
         holdout = load_tasks(self.cfg.gate.holdout, limit=self.cfg.gate.holdout_limit, seed=self.cfg.gate.holdout_seed)
         hid = holdout_id([t.task_name for t in holdout])
         inc = self.store.incumbent()
+        traces = sorted(self._traces_dir().glob("*.jsonl"))
         self.cycle.update(
+            trace_files=[str(t) for t in traces],
             pool_size=len(pool), pool_dataset=self.cfg.tasks,
             holdout_names=[t.task_name for t in holdout], holdout_id=hid,
             incumbent=inc, model=self.cfg.model, loop=self.cfg.name, started=now_iso(),
         )
         self.cycle.mark_done("snapshot", pool=len(pool), holdout=len(holdout), holdout_id=hid,
-                             incumbent=(inc or {}).get("id", "base"))
+                             incumbent=(inc or {}).get("id", "base"), trace_files=len(traces))
 
     def preflight(self) -> None:
         problems = []
@@ -191,40 +193,85 @@ class Runner:
             raise CycleAborted(f"filter: only {len(keep)} contested tasks (< {fc.min_tasks}); measured {len(under)}")
         self.cycle.mark_done("filter", measured=len(under), contested=len(keep), newly_measured=newly, rounds=rounds)
 
-    def train(self) -> None:
-        st = self.cycle.state
-        inc = st.get("incumbent") or {}
-        log_path = self.cycle.subdir("train")
-        spec = {
-            "base_url": self.cfg.base_url, "model": self.cfg.model, "renderer": self.cfg.renderer,
-            "dataset": self.cfg.tasks, "task_names": st["train_task_names"],
-            "stage": self.stage.__dict__, "sandbox": self.cfg.sandbox.__dict__,
-            "log_path": str(log_path), "load_checkpoint_path": inc.get("state_path"),
-            "logprob_abs_diff_max": self.cfg.gate.logprob_abs_diff_max,
-        }
+    def _traces_dir(self) -> Path:
+        return Path(self.cfg.traces).expanduser() if self.cfg.traces else self.store.root / "traces"
+
+    def _run_worker(self, module: str, spec: dict, log_path: Path) -> None:
         (log_path / "spec.json").write_text(json.dumps(spec, indent=1))
         t0 = time.monotonic()
         with (log_path / "train.log").open("a") as logf:
-            proc = subprocess.run([sys.executable, "-m", "polyloop.harness.train", str(log_path / "spec.json")],
+            proc = subprocess.run([sys.executable, "-m", module, str(log_path / "spec.json")],
                                   stdout=logf, stderr=subprocess.STDOUT)
         self._charge("train", time.monotonic() - t0)
         if proc.returncode != 0:
-            raise RuntimeError(f"train worker exited {proc.returncode}; see {log_path / 'train.log'}")
+            raise RuntimeError(f"{module} exited {proc.returncode}; see {log_path / 'train.log'}")
+
+    @staticmethod
+    def _last_checkpoint(log_path: Path) -> dict:
         ckpts = [json.loads(l) for l in (log_path / "checkpoints.jsonl").read_text().splitlines() if l.strip()]
         last = [c for c in ckpts if c.get("sampler_path")]
         if not last:
-            raise RuntimeError("train produced no sampler checkpoint")
-        last = last[-1]
-        metrics = [json.loads(l) for l in (log_path / "metrics.jsonl").read_text().splitlines() if l.strip()] \
-            if (log_path / "metrics.jsonl").exists() else []
-        diffs = [m["optim/rollout_logprobs_abs_diff_mean"] for m in metrics if "optim/rollout_logprobs_abs_diff_mean" in m]
-        rewards = [m[k] for m in metrics for k in m if k.startswith("env/all/reward/mean") or k == "reward/mean"]
+            raise RuntimeError(f"no sampler checkpoint under {log_path}")
+        return last[-1]
+
+    @staticmethod
+    def _metrics(log_path: Path) -> list[dict]:
+        p = log_path / "metrics.jsonl"
+        if not p.exists():
+            return []
+        return [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+
+    def train(self) -> None:
+        st = self.cycle.state
+        inc = st.get("incumbent") or {}
+        load_path = inc.get("state_path")
+        last = None
+        diffs: list[float] = []
+        total_steps = 0
+        summary = []
+        for i, stage in enumerate(self.cfg.stages):
+            log_path = self.cycle.subdir(f"train/{i}-{stage.kind}")
+            if stage.kind == "rl":
+                if not st.get("train_task_names"):
+                    self._say(f"train[{i}] rl: no contested tasks, skipped")
+                    continue
+                spec = {"base_url": self.cfg.base_url, "model": self.cfg.model, "renderer": self.cfg.renderer,
+                        "dataset": self.cfg.tasks, "task_names": st["train_task_names"], "stage": stage.__dict__,
+                        "sandbox": self.cfg.sandbox.__dict__, "log_path": str(log_path),
+                        "load_checkpoint_path": load_path, "logprob_abs_diff_max": self.cfg.gate.logprob_abs_diff_max}
+                self._say(f"train[{i}] rl: {len(st['train_task_names'])} tasks, {stage.steps} steps")
+                self._run_worker("polyloop.harness.train", spec, log_path)
+            elif stage.kind == "opsd":
+                from polyloop.harness.trace_rows import write_rows
+
+                traces = sorted(self._traces_dir().glob("*.jsonl"))
+                rows_path = log_path / "rows.jsonl"
+                n = write_rows(traces, rows_path, max_hint_chars=stage.max_hint_chars)
+                self.cycle.emit("opsd.rows", rows=n, trace_files=len(traces))
+                if n < stage.min_rows:
+                    self._say(f"train[{i}] opsd: {n} rows (< {stage.min_rows}), skipped")
+                    continue
+                spec = {"base_url": self.cfg.base_url, "model": self.cfg.model, "renderer": self.cfg.renderer,
+                        "rows": str(rows_path), "stage": stage.__dict__, "log_path": str(log_path),
+                        "load_checkpoint_path": load_path}
+                self._say(f"train[{i}] opsd: {n} rows from {len(traces)} trace files, {stage.steps} steps")
+                self._run_worker("polyloop.harness.train_opsd", spec, log_path)
+            else:
+                raise CycleAborted(f"train: unknown stage kind {stage.kind!r}")
+            last = self._last_checkpoint(log_path)
+            load_path = last.get("state_path") or load_path
+            metrics = self._metrics(log_path)
+            total_steps += len(metrics)
+            diffs += [m["optim/rollout_logprobs_abs_diff_mean"] for m in metrics if "optim/rollout_logprobs_abs_diff_mean" in m]
+            summary.append({"stage": stage.kind, "steps": len(metrics), "sampler_path": last["sampler_path"]})
+        if last is None:
+            raise CycleAborted("train: no stage produced a checkpoint (no contested tasks and too few trace rows)")
         candidate = {"id": f"{self.cfg.name}-{self.cycle.id}", "cycle": self.cycle.id,
                      "sampler_path": last["sampler_path"], "state_path": last.get("state_path"),
-                     "step": last.get("batch"), "parent": inc.get("id", "base")}
-        self.cycle.update(candidate=candidate, train_steps=len(metrics),
-                          logprob_abs_diff_max=max(diffs) if diffs else None, train_reward_curve=rewards)
-        self.cycle.mark_done("train", steps=len(metrics), candidate=candidate["id"],
+                     "step": last.get("batch"), "parent": inc.get("id", "base"), "stages": summary}
+        self.cycle.update(candidate=candidate, train_steps=total_steps,
+                          logprob_abs_diff_max=max(diffs) if diffs else None)
+        self.cycle.mark_done("train", steps=total_steps, candidate=candidate["id"], stages=summary,
                              logprob_abs_diff_max=max(diffs) if diffs else None)
 
     def _eval_policy(self, label: str, policy: dict | None, holdout) -> dict[str, float]:
@@ -290,6 +337,11 @@ class Runner:
             return
         if self.cfg.promote.mode == "auto":
             self.store.set_incumbent(st["candidate"], st["receipt"])
+            from polyloop.events import write_json
+
+            write_json(self.store.root / "live.json", {"sampler_path": st["candidate"]["sampler_path"],
+                                                       "candidate": st["candidate"]["id"], "promoted_at": now_iso(), "receipt": st["receipt"]})
+            notify_proxy(self.cfg.proxy_url, st["candidate"], st["receipt"], log=self._say)
             self.cycle.update(status="promoted")
             self.cycle.mark_done("promote", action="auto", incumbent=st["candidate"]["id"])
         else:
@@ -304,12 +356,29 @@ class Runner:
             self.cycle.update(status="done")
 
 
+def notify_proxy(proxy_url: str | None, candidate: dict, receipt: str | None, log=print) -> None:
+    if not proxy_url:
+        return
+    try:
+        import httpx
+
+        r = httpx.post(proxy_url.rstrip("/") + "/admin/promote",
+                       json={"sampler_path": candidate["sampler_path"], "candidate": candidate["id"], "receipt": receipt}, timeout=30)
+        log(f"proxy live -> {r.json().get('live')}")
+    except Exception as exc:  # promotion is recorded either way; the proxy re-reads live.json on restart
+        log(f"proxy notify failed: {exc}")
+
+
 def approve(store: LoopStore, cycle_id: str, log=print) -> dict:
     cycle = store.cycle(cycle_id)
     st = cycle.state
     if st.get("status") != "awaiting_approval":
         raise SystemExit(f"cycle {cycle_id} is {st.get('status')!r}, not awaiting approval")
     store.set_incumbent(st["candidate"], st["receipt"])
+    from polyloop.events import write_json
+
+    write_json(store.root / "live.json", {"sampler_path": st["candidate"]["sampler_path"], "candidate": st["candidate"]["id"],
+                                          "promoted_at": now_iso(), "receipt": st["receipt"]})
     cycle.update(status="promoted", approved_at=now_iso())
     cycle.emit("promote.approved", candidate=st["candidate"]["id"])
     log(f"promoted {st['candidate']['id']}")
