@@ -15,7 +15,7 @@ stages:
     harness: cookbook-bash
     group_size: 4
     groups_per_batch: 8
-    steps: 4
+    steps: 3
     learning_rate: 1.0e-5
     max_tokens: 2048
     max_turns: 20
@@ -26,7 +26,7 @@ stages:
   - kind: opsd
     group_size: 2                 # student samples per prompt
     groups_per_batch: 16
-    steps: 3
+    steps: 2
     learning_rate: 1.0e-5
     max_tokens: 1024
     lora_rank: 32
@@ -43,23 +43,23 @@ sandbox:
   max_parallel: 16
 
 filter:
-  pool_sample: 30
-  rollouts_per_task: 4
+  pool_sample: 20
+  rollouts_per_task: 3
   keep_min: 0.0
   keep_max: 1.0
   min_tasks: 4
-  target_tasks: 12
+  target_tasks: 10
   max_rounds: 2
 
 budget:
   gpus: 2
-  max_cycle_gpu_seconds: 21600   # 3 h x 2 GPUs
+  max_cycle_gpu_seconds: 12600   # 1.75 h x 2 GPUs
 
 gate:
   holdout: ~/polyloop-tasks/pydantic-v2/holdout   # split by source test file, never trained on
   holdout_limit: 24
   holdout_seed: 0
-  repeats: 6
+  repeats: 4
   temperature: 1.0
   min_delta: 0.10                # pass criterion fixed before the run
   tie_band: 0.01
