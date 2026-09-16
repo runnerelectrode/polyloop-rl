@@ -5,6 +5,7 @@
 # through `polyloop proxy`.
 name: pydantic-v2
 model: Qwen/Qwen3.5-9B
+renderer: qwen3_5_disable_thinking
 base_url: http://127.0.0.1:8000
 proxy_url: http://127.0.0.1:8787
 runs_dir: ~/polyloop-runs
