@@ -59,7 +59,8 @@ chmod +x ~/serve.sh
 
 # Task images: the pydantic base image (tasks are FROM it)
 if [ -f ~/polyloop-tasks/pydantic-v2/Dockerfile.base ]; then
-  (cd ~/polyloop-tasks/pydantic-v2 && docker build -q -t polyloop-pydantic:latest -f Dockerfile.base . && echo "== base image ok")
+  # docker group membership applies to new logins only; this script runs in the login that added it
+  (cd ~/polyloop-tasks/pydantic-v2 && sg docker -c "docker build -q -t polyloop-pydantic:latest -f Dockerfile.base ." && echo "== base image ok")
 else
   echo "== NOTE: rsync the task pool to ~/polyloop-tasks/pydantic-v2 (Dockerfile.base, train/, holdout/) then build the base image"
 fi
