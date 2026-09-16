@@ -1,0 +1,72 @@
+# polyloop-rl cheap loop: pydantic v1-idiom -> v2 migration on modules from pydantic's own test
+# suite. Verifier = pytest with deprecation warnings as errors. Two train stages: GRPO on
+# contested pool tasks, then hinted OPSD on the proxy's traces (hint = the tool/test output that
+# followed each assistant turn). One 2xH100 node: GPU0 trainer, GPU1 sampler; agent on a laptop
+# through `polyloop proxy`.
+name: pydantic-v2-4b
+model: Qwen/Qwen3.5-4B
+renderer: qwen3_5_disable_thinking
+base_url: http://127.0.0.1:8000
+proxy_url: http://127.0.0.1:8787
+runs_dir: ~/polyloop-runs
+tasks: ~/polyloop-tasks/pydantic-v2/train        # built by `polyloop tasks pydantic-v2` + split by source file
+
+stages:
+  - kind: rl
+    harness: cookbook-bash
+    group_size: 4
+    groups_per_batch: 8
+    steps: 3
+    learning_rate: 1.0e-5
+    max_tokens: 2048
+    max_turns: 20
+    max_trajectory_tokens: 12288
+    lora_rank: 32
+    loss: importance_sampling
+    save_every: 2
+  - kind: opsd
+    group_size: 2                 # student samples per prompt
+    groups_per_batch: 16
+    steps: 2
+    learning_rate: 1.0e-5
+    max_tokens: 1024
+    lora_rank: 32
+    kl_penalty_coef: 1.0
+    max_hint_chars: 1500
+    min_rows: 8
+    save_every: 1
+
+sandbox:
+  backend: docker
+  timeout: 1200
+  command_timeout: 60
+  grader_timeout: 180
+  max_parallel: 16
+
+filter:
+  pool_sample: 20
+  rollouts_per_task: 3
+  keep_min: 0.0
+  keep_max: 1.0
+  min_tasks: 4
+  target_tasks: 10
+  max_rounds: 2
+
+budget:
+  gpus: 2
+  max_cycle_gpu_seconds: 12600   # 1.75 h x 2 GPUs
+
+gate:
+  holdout: ~/polyloop-tasks/pydantic-v2/holdout   # split by source test file, never trained on
+  holdout_limit: 24
+  holdout_seed: 0
+  repeats: 4
+  temperature: 1.0
+  min_delta: 0.10                # pass criterion fixed before the run
+  tie_band: 0.01
+  max_regressions: 2
+  logprob_abs_diff_max: 0.05
+  max_error_rate: 0.2
+
+promote:
+  mode: approve
