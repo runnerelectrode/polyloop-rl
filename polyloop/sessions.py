@@ -60,7 +60,8 @@ def run_one(task_dir: Path, *, agent_cfg: Path, proxy: str, python: str, mini_bi
     log_dir.mkdir(parents=True, exist_ok=True)
     traj = log_dir / f"{sid}.traj.json"
     t0 = time.monotonic()
-    proc = subprocess.run([mini_bin, "-y", "-c", str(cfg_path), "-t", task, "-o", str(traj)],
+    proc = subprocess.run([mini_bin, "-y", "--agent-class", "default", "--exit-immediately",
+                           "-c", str(cfg_path), "-t", task, "-o", str(traj)],
                           cwd=work, capture_output=True, text=True, timeout=1800,
                           env={**os.environ, "MSWEA_COST_TRACKING": "ignore_errors", "OPENAI_API_KEY": "polyloop"})
     seconds = time.monotonic() - t0
