@@ -14,7 +14,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from polyloop.events import LoopStore
+from polyloop.events import LoopStore, read_json
 from polyloop.report import build as build_report
 
 LIVE_CSS = """
@@ -65,10 +65,71 @@ def _tail_metrics(train_dir: Path, n: int = 12) -> list[dict]:
     return out
 
 
+def _sessions(store: LoopStore, n: int = 12) -> tuple[list[dict], list[dict]]:
+    """Recent proxy sessions (from traces/*.jsonl) and a few hinted steps."""
+    traces = sorted((store.root / "traces").glob("*.jsonl"))
+    recs: list[dict] = []
+    for p in traces[-3:]:
+        for line in p.read_text().splitlines()[-400:]:
+            try:
+                recs.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+    outcomes = {}
+    sess_log = store.root.parent / "sessions" / "sessions.jsonl"
+    if sess_log.exists():
+        for line in sess_log.read_text().splitlines():
+            try:
+                r = json.loads(line)
+                outcomes[r["session"]] = r
+            except (json.JSONDecodeError, KeyError):
+                pass
+    by: dict[str, dict] = {}
+    for r in recs:
+        b = by.setdefault(r["session"], {"session": r["session"], "turns": 0, "last": r["ts"], "hinted": 0, "done": False})
+        b["turns"] = max(b["turns"], r.get("turn", 0) + 1)
+        b["last"] = max(b["last"], r["ts"])
+        b["hinted"] += 1 if r.get("next_state") else 0
+        b["done"] = b["done"] or bool(r.get("session_done"))
+    sessions = sorted(by.values(), key=lambda b: b["last"], reverse=True)[:n]
+    for b in sessions:
+        o = outcomes.get(b["session"], {})
+        b["passed"] = o.get("passed_strict")
+        b["task"] = o.get("task", "")
+    hints = [r for r in recs if r.get("next_state") and "tool output" in (r["next_state"].get("content") or "")][-3:]
+    return sessions, hints
+
+
+def _live_banner(store: LoopStore) -> str:
+    live = read_json(store.root / "live.json", {})
+    if not live.get("sampler_path"):
+        return "<div class='kv'><span>live adapter</span><b style='font-size:15px'>base model</b><span>no promotion yet</span></div>"
+    return (f"<div class='kv'><span>live adapter</span><b style='font-size:15px' class='mono'>{html.escape(str(live.get('candidate')))}</b>"
+            f"<span>since {html.escape(str(live.get('promoted_at','')))[:16]} · receipt {html.escape(str(live.get('receipt') or ''))[-40:]}</span></div>")
+
+
+def sessions_section(store: LoopStore) -> str:
+    sessions, hints = _sessions(store)
+    rows = "".join(
+        f"<tr><td class='mono'>{html.escape(b['session'][:34])}</td><td class='mono'>{b['turns']}</td><td class='mono'>{b['hinted']}</td>"
+        f"<td>{'yes' if b['done'] else '…'}</td><td>{'' if b['passed'] is None else ('<span class=ok>pass</span>' if b['passed'] else '<span class=neg>fail</span>')}</td>"
+        f"<td class='mono'>{html.escape(b['last'][11:19])}</td></tr>" for b in sessions)
+    hint_html = "".join(
+        f"<details><summary class='mono'>{html.escape(r['session'][:30])} · turn {r['turn']}</summary>"
+        f"<p><b>agent said</b></p><pre>{html.escape((r.get('response') or '')[:600])}</pre>"
+        f"<p><b>next state, becomes the teacher's hint</b></p><pre>{html.escape((r['next_state'].get('content') or '')[:600])}</pre></details>"
+        for r in hints)
+    return f"""
+<h2>Sessions through the proxy</h2>
+<div class='wrap'><table><tr><th>session</th><th>turns</th><th>with next state</th><th>closed</th><th>strict verify</th><th>last</th></tr>{rows or "<tr><td colspan=6 class='sub'>none yet: point an agent at the proxy</td></tr>"}</table></div>
+<h2>Hindsight hints (latest)</h2>{hint_html or "<p class='sub'>none yet</p>"}
+"""
+
+
 def live_section(store: LoopStore) -> str:
     cycles = store.cycles()
     if not cycles:
-        return "<h2>Live</h2><p class='sub'>No cycle has started.</p>"
+        return f"<h2>Live</h2><div class='live'>{_live_banner(store)}</div><p class='sub'>No cycle has started.</p>"
     c = store.cycle(cycles[-1])
     st = c.state
     events = list(c.events())
@@ -98,6 +159,7 @@ def live_section(store: LoopStore) -> str:
 <h2 class='hdr'><span>Live · cycle <span class='mono'>{c.id}</span> <span class='pill {status}'>{status}</span></span><span class='sub'>refreshed {time.strftime('%H:%M:%S')} UTC</span></h2>
 <div class='stages'>{chips}</div>
 <div class='live'>
+{_live_banner(store)}
 <div class='kv'><span>sandboxes running</span><b>{containers}</b></div>
 <div class='kv'><span>filter episodes</span><b>{n_done['filter']}</b></div>
 <div class='kv'><span>eval episodes (inc / cand)</span><b>{n_done['evaluate.incumbent']} / {n_done['evaluate.candidate']}</b></div>
@@ -146,7 +208,7 @@ JS = """
 
 
 def fragment(store: LoopStore, log_path: Path | None) -> str:
-    return (f"<div id='live'>{live_section(store)}</div>"
+    return (f"<div id='live'>{live_section(store)}{sessions_section(store)}</div>"
             f"<h2>Log</h2><pre id='log' style='max-height:360px;overflow:auto'>{html.escape(log_tail(log_path))}</pre>")
 
 
