@@ -231,7 +231,10 @@ class Runner:
         summary = []
         for i, stage in enumerate(self.cfg.stages):
             log_path = self.cycle.subdir(f"train/{i}-{stage.kind}")
-            if stage.kind == "rl":
+            done_before = (log_path / "checkpoints.jsonl").exists() and len(self._metrics(log_path)) >= stage.steps
+            if done_before:
+                self._say(f"train[{i}] {stage.kind}: {len(self._metrics(log_path))} steps already on disk, reusing")
+            elif stage.kind == "rl":
                 if not st.get("train_task_names"):
                     self._say(f"train[{i}] rl: no contested tasks, skipped")
                     continue
@@ -241,7 +244,7 @@ class Runner:
                         "load_checkpoint_path": load_path, "logprob_abs_diff_max": self.cfg.gate.logprob_abs_diff_max}
                 self._say(f"train[{i}] rl: {len(st['train_task_names'])} tasks, {stage.steps} steps")
                 self._run_worker("polyloop.harness.train", spec, log_path)
-            elif stage.kind == "opsd":
+            elif stage.kind == "opsd" and not done_before:
                 from polyloop.harness.trace_rows import write_rows
 
                 traces = sorted(self._traces_dir().glob("*.jsonl"))
@@ -256,7 +259,7 @@ class Runner:
                         "load_checkpoint_path": load_path}
                 self._say(f"train[{i}] opsd: {n} rows from {len(traces)} trace files, {stage.steps} steps")
                 self._run_worker("polyloop.harness.train_opsd", spec, log_path)
-            else:
+            elif not done_before:
                 raise CycleAborted(f"train: unknown stage kind {stage.kind!r}")
             last = self._last_checkpoint(log_path)
             load_path = last.get("state_path") or load_path

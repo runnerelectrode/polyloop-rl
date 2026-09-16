@@ -45,6 +45,8 @@ def main(spec_path: str) -> int:
     )
     if spec.get("load_checkpoint_path"):
         kwargs["load_checkpoint_path"] = spec["load_checkpoint_path"]
+    from polyloop.harness.kl_guard import install as _kl_install
+    print("[polyloop.opsd] kl guard:", _kl_install(), flush=True)
     config = train_on_policy.Config(**kwargs)
     print(f"[polyloop.opsd] {len(rows)} rows, {st['steps']} steps, teacher={opsd_lib.describe_teacher(teacher_config, st.get('teacher_hint'))}", flush=True)
     asyncio.run(opsd_lib.main(config, teacher_hint=st.get("teacher_hint")))

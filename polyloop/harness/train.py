@@ -97,7 +97,8 @@ def main(spec_path: str) -> int:
         kwargs["async_config"] = rl_train.AsyncConfig(
             max_steps_off_policy=st["max_steps_off_policy"], groups_per_batch=st["groups_per_batch"])
     config = rl_train.Config(**kwargs)
-    _tolerate_logprob_length_mismatch(rl_train)
+    from polyloop.harness.kl_guard import install as _kl_install
+    print("[polyloop.train] kl guard:", _kl_install(), flush=True)
     guarded = logprob_guard.install(threshold=spec.get("logprob_abs_diff_max", 0.05))
     print(f"[polyloop.train] {len(tasks)} tasks, {st['steps']} steps, logprob guard={'on' if guarded else 'OFF'}", flush=True)
     asyncio.run(rl_train.main(config))
