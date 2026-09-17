@@ -114,13 +114,16 @@ def eval_cmd(loop_path, dataset, limit, sampler_path, repeats, out):
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", type=int, default=8787, show_default=True)
 @click.option("--max-tokens", type=int, default=4096, show_default=True)
-def proxy_cmd(loop_path, host, port, max_tokens):
-    """OpenAI/Anthropic-compatible endpoint for your coding agent; records sessions; serves the live adapter."""
+@click.option("--slot", default=None, help="Name a second instance (e.g. candidate); its traces land in <date>.<slot>.jsonl.")
+@click.option("--system-prompt", "system_prompt_path", default=None, help="File prepended as the system message when a request has none.")
+def proxy_cmd(loop_path, host, port, max_tokens, slot, system_prompt_path):
+    """OpenAI/Anthropic-compatible endpoint for your agent; records sessions; serves the live adapter."""
     from polyloop.proxy import serve
 
     cfg, _ = _store(loop_path)
+    prompt = Path(system_prompt_path).expanduser().read_text().strip() if system_prompt_path else None
     serve(host, port, base_url=cfg.base_url, model=cfg.model, renderer_name=cfg.renderer,
-          runs_dir=cfg.runs_path, loop_name=cfg.name, default_max_tokens=max_tokens)
+          runs_dir=cfg.runs_path, loop_name=cfg.name, default_max_tokens=max_tokens, slot=slot, system_prompt=prompt)
 
 
 @main.command("sessions")

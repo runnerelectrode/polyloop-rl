@@ -11,7 +11,13 @@ routes) and adds what the loop needs:
   without a next state;
 - a live adapter: the sampler path is read from `<runs>/<loop>/live.json` at startup and
   after every `/admin/promote`, so a promoted cycle changes what the agent samples from
-  without touching the agent.
+  without touching the agent;
+- a transient override: `POST /admin/serve {"sampler_path": ...}` makes this instance sample
+  from that adapter (null = base model) until `{"clear": true}`, without touching live.json.
+  An environment uses it to score a candidate through the same endpoint; a second instance
+  started with `--slot candidate` keeps production traffic on the live adapter meanwhile;
+- an optional system prompt, prepended when a request carries none (simulators such as
+  Coval send only the dialogue).
 
 Records land as one JSON line per assistant turn under `<runs>/<loop>/traces/<date>.jsonl`.
 """
@@ -51,9 +57,12 @@ class TraceStore:
     turns: dict[str, int] = field(default_factory=dict)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
+    slot: str | None = None
+
     def _path(self) -> Path:
         self.root.mkdir(parents=True, exist_ok=True)
-        return self.root / (time.strftime("%Y-%m-%d") + ".jsonl")
+        suffix = f".{self.slot}" if self.slot else ""
+        return self.root / (time.strftime("%Y-%m-%d") + suffix + ".jsonl")
 
     def _write(self, p: _Pending, next_state: dict | None, done: bool) -> None:
         rec = {
@@ -126,7 +135,7 @@ def _extract_anthropic(resp: dict) -> tuple[str, list[dict], dict]:
 
 
 def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: Path, loop_name: str,
-             default_max_tokens: int = 4096) -> web.Application:
+             default_max_tokens: int = 4096, slot: str | None = None, system_prompt: str | None = None) -> web.Application:
     import tinker
     from tinker_cookbook.capture.proxy.app import ProxyDeps, make_app as cookbook_app
     from tinker_cookbook.model_info import get_recommended_renderer_name
@@ -145,9 +154,13 @@ def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: 
     rname = renderer_name or get_recommended_renderer_name(model)
     renderer = get_renderer(rname, get_tokenizer(model), model_name=model)
 
+    override: dict = {}  # {"sampler_path": str | None} while an environment scores a policy here
+
     def sampling_client():
-        live = read_json(live_path, {})
-        path = live.get("sampler_path")
+        if "sampler_path" in override:
+            path = override["sampler_path"]
+        else:
+            path = read_json(live_path, {}).get("sampler_path")
         if path:
             return service.create_sampling_client(model_path=path), path
         return service.create_sampling_client(base_model=model), model
@@ -155,7 +168,7 @@ def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: 
     sc, label = sampling_client()
     deps = ProxyDeps(renderer=renderer, sampling_client=sc, model_label=label, default_max_tokens=default_max_tokens)
     inner = cookbook_app(deps)
-    store = TraceStore(loop_dir / "traces")
+    store = TraceStore(loop_dir / "traces", slot=slot)
 
     async def reload_live() -> str:
         sc2, label2 = sampling_client()
@@ -175,9 +188,19 @@ def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: 
             body = json.loads(raw or b"{}")
         except json.JSONDecodeError:
             return await handler(request)
+        rewrite = False
         if body.get("stream"):
             body["stream"] = False  # record the full turn; agents we target accept non-streaming
-            request._read_bytes = json.dumps(body).encode()  # noqa: SLF001
+            rewrite = True
+        if system_prompt:
+            if is_openai and not any(m.get("role") == "system" for m in body.get("messages") or []):
+                body["messages"] = [{"role": "system", "content": system_prompt}] + list(body.get("messages") or [])
+                rewrite = True
+            elif is_anthropic and not body.get("system"):
+                body["system"] = system_prompt
+                rewrite = True
+        if rewrite:
+            request._read_bytes = json.dumps(body).encode()  # noqa: SLF001  (what is recorded is what is sampled)
         session = _session_id(request, body)
         turn_type = (request.headers.get("X-Turn-Type") or MAIN).lower()
         done = _truthy(request.headers.get("X-Session-Done"))
@@ -205,6 +228,15 @@ def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: 
         label2 = await reload_live()
         return web.json_response({"live": label2})
 
+    async def serve_override(request: web.Request) -> web.Response:
+        body = await request.json()
+        if body.get("clear"):
+            override.pop("sampler_path", None)
+        else:
+            override["sampler_path"] = body.get("sampler_path")
+        label2 = await reload_live()
+        return web.json_response({"live": label2, "override": "sampler_path" in override})
+
     async def session_done(request: web.Request) -> web.Response:
         sid = request.match_info["session"]
         await store.finish(sid)
@@ -212,10 +244,12 @@ def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: 
 
     async def status(request: web.Request) -> web.Response:
         return web.json_response({"live": deps.model_label, "pending_sessions": len(store.pending),
-                                  "traces_dir": str(store.root)})
+                                  "traces_dir": str(store.root), "slot": slot, "override": "sampler_path" in override,
+                                  "system_prompt": bool(system_prompt)})
 
     inner["polyloop_keepalive"] = keepalive
     inner.router.add_post("/admin/promote", promote)
+    inner.router.add_post("/admin/serve", serve_override)
     inner.router.add_post("/admin/session/{session}/done", session_done)
     inner.router.add_get("/admin/status", status)
     return inner
