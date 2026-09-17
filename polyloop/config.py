@@ -83,6 +83,12 @@ class GateConfig:
 
 
 @dataclass
+class EnvironmentConfig:
+    kind: str = "harbor-docker"          # registered name or module:Class (see polyloop/environment.py)
+    options: dict = field(default_factory=dict)
+
+
+@dataclass
 class PromoteConfig:
     mode: str = "approve"                # approve | auto
 
@@ -104,6 +110,7 @@ class LoopConfig:
     budget: BudgetConfig = field(default_factory=BudgetConfig)
     gate: GateConfig = field(default_factory=GateConfig)
     promote: PromoteConfig = field(default_factory=PromoteConfig)
+    environment: EnvironmentConfig = field(default_factory=EnvironmentConfig)
     replay_fraction: float = 0.05
     source_path: str | None = None
 
@@ -141,6 +148,7 @@ def load_loop(path: str | Path) -> LoopConfig:
         budget=_build(BudgetConfig, raw.pop("budget", None)),
         gate=_build(GateConfig, raw.pop("gate", None)),
         promote=_build(PromoteConfig, raw.pop("promote", None)),
+        environment=_build(EnvironmentConfig, raw.pop("environment", None)),
         replay_fraction=raw.pop("replay_fraction", 0.05),
         source_path=str(p),
     )

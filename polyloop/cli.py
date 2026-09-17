@@ -80,15 +80,17 @@ def status(loop_path, cycle_id):
 @click.option("--repeats", "-k", type=int, default=1)
 @click.option("--out", default=None)
 def eval_cmd(loop_path, dataset, limit, sampler_path, repeats, out):
-    """Ad-hoc: score a checkpoint on a task set (baseline numbers)."""
-    import asyncio
+    """Ad-hoc: score a checkpoint on a task set (baseline numbers) through the loop's environment."""
+    from polyloop.environment import load_environment
 
-    from polyloop.harness.rollout import load_tasks, run_rollouts, warm
+    cfg, store = _store(loop_path)
+    g, s = cfg.gate, cfg.stages[0]
+    env = load_environment(cfg, store, log=click.echo)
+    if env.needs_engine_warm:
+        from polyloop.harness.rollout import warm
 
-    cfg, _ = _store(loop_path)
-    g, s, sb = cfg.gate, cfg.stages[0], cfg.sandbox
-    warm(cfg.base_url, cfg.model, rank=s.lora_rank, log=click.echo)
-    tasks = load_tasks(dataset or g.holdout, limit=limit or g.holdout_limit, seed=g.holdout_seed)
+        warm(cfg.base_url, cfg.model, rank=s.lora_rank, log=click.echo)
+    tasks = env.load_tasks(dataset or g.holdout, limit=limit or g.holdout_limit, seed=g.holdout_seed)
     out_path = Path(out).expanduser() if out else None
     if out_path:
         out_path.mkdir(parents=True, exist_ok=True)
@@ -99,12 +101,9 @@ def eval_cmd(loop_path, dataset, limit, sampler_path, repeats, out):
             with (out_path / "results.jsonl").open("a") as f:
                 f.write(json.dumps(r.to_dict()) + "\n")
 
-    results = asyncio.run(run_rollouts(
-        base_url=cfg.base_url, model=cfg.model, renderer=cfg.renderer, tasks=tasks, sampler_path=sampler_path,
-        k=repeats, max_parallel=sb.max_parallel, max_tokens=s.max_tokens, max_turns=s.max_turns,
-        max_trajectory_tokens=s.max_trajectory_tokens, sandbox_timeout=sb.timeout, command_timeout=sb.command_timeout,
-        grader_timeout=sb.grader_timeout, temperature=g.temperature, context_window=s.max_trajectory_tokens, on_result=on_result,
-        trajectories_dir=(out_path / "trajectories") if out_path else None))
+    policy = {"id": "adhoc", "sampler_path": sampler_path}
+    results = env.run_rollouts(label="eval", tasks=tasks, policy=policy, k=repeats, temperature=g.temperature,
+                               out=out_path, on_result=on_result)
     ok = [r for r in results if r.error is None and r.mean is not None]
     mean = sum(r.mean for r in ok) / len(ok) if ok else float("nan")
     click.echo(f"{len(ok)}/{len(results)} tasks scored, mean reward {mean:.3f}, errors {len(results) - len(ok)}")

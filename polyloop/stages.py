@@ -1,7 +1,7 @@
 """The cycle: snapshot -> preflight -> filter -> train -> evaluate -> gate -> promote -> observe.
 
 Each stage reads state.json, writes one artifact, marks itself done. A rerun of the same
-cycle skips finished stages (resume). Only train and the two rollout stages touch GPUs; the
+cycle skips finished stages (resume). Only train and the two rollout stages touch GPUs (through the loop's environment, see polyloop/environment.py); the
 budget is checked at every stage edge and an overrun ends the cycle before the next stage,
 never in the middle of one (a half-trained adapter is never a candidate).
 """
@@ -10,14 +10,14 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
-import subprocess
 import sys
 import time
 from pathlib import Path
 
 from polyloop.config import LoopConfig
 from polyloop.events import Cycle, LoopStore, now_iso, read_json
-from polyloop.harness.rollout import TaskResult, load_tasks, run_rollouts
+from polyloop.environment import load_environment
+from polyloop.harness.rollout import TaskResult
 from polyloop.receipt import holdout_id, paired_stats, write_receipt
 
 STAGES = ["snapshot", "preflight", "filter", "train", "evaluate", "gate", "promote", "observe"]
@@ -34,6 +34,7 @@ class Runner:
         self.store: LoopStore = cycle.store
         self.log = log
         self.stage = cfg.stages[0]
+        self.env = load_environment(cfg, self.store, log=self._say)
 
     # ---- helpers --------------------------------------------------------
     def _say(self, msg: str) -> None:
@@ -55,19 +56,8 @@ class Runner:
             self.cycle.emit("budget.exceeded", spent=spent, cap=self.cfg.budget.max_cycle_gpu_seconds, before=next_stage)
             raise CycleAborted(f"budget exceeded before {next_stage}: {spent:.0f}s GPU > {self.cfg.budget.max_cycle_gpu_seconds}s")
 
-    def _rollout_kwargs(self, **over):
-        s, sb = self.stage, self.cfg.sandbox
-        kw = dict(base_url=self.cfg.base_url, model=self.cfg.model, renderer=self.cfg.renderer,
-                  max_parallel=sb.max_parallel, max_tokens=s.max_tokens, max_turns=s.max_turns,
-                  max_trajectory_tokens=s.max_trajectory_tokens, sandbox_timeout=sb.timeout,
-                  command_timeout=sb.command_timeout, grader_timeout=sb.grader_timeout,
-                  context_window=s.max_trajectory_tokens)
-        kw.update(over)
-        return kw
-
-    def _run_rollouts(self, stage: str, tasks, sampler_path, k, temperature=1.0, out: Path | None = None) -> list[TaskResult]:
+    def _run_rollouts(self, stage: str, tasks, policy: dict | None, k, temperature=1.0, out: Path | None = None) -> list[TaskResult]:
         t0 = time.monotonic()
-        results: list[TaskResult] = []
 
         def on_result(r: TaskResult):
             self.cycle.emit("rollout.task", stage=stage, task=r.task, rewards=r.rewards, error=r.error, seconds=round(r.seconds, 1))
@@ -75,9 +65,8 @@ class Runner:
                 with (out / "results.jsonl").open("a") as f:
                     f.write(json.dumps(r.to_dict()) + "\n")
 
-        results = asyncio.run(run_rollouts(tasks=tasks, sampler_path=sampler_path, k=k, temperature=temperature,
-                                           on_result=on_result, trajectories_dir=(out / "trajectories") if out else None,
-                                           **self._rollout_kwargs()))
+        results = self.env.run_rollouts(label=stage, tasks=tasks, policy=policy or {}, k=k, temperature=temperature,
+                                        out=out, on_result=on_result)
         self._charge(stage, time.monotonic() - t0)
         return results
 
@@ -113,8 +102,8 @@ class Runner:
 
     def snapshot(self) -> None:
 
-        pool = load_tasks(self.cfg.tasks)
-        holdout = load_tasks(self.cfg.gate.holdout, limit=self.cfg.gate.holdout_limit, seed=self.cfg.gate.holdout_seed)
+        pool = self.env.load_tasks(self.cfg.tasks)
+        holdout = self.env.load_tasks(self.cfg.gate.holdout, limit=self.cfg.gate.holdout_limit, seed=self.cfg.gate.holdout_seed)
         hid = holdout_id([t.task_name for t in holdout])
         inc = self.store.incumbent()
         traces = sorted(self._traces_dir().glob("*.jsonl"))
@@ -134,8 +123,7 @@ class Runner:
             problems.append("empty task pool")
         if not st["holdout_names"]:
             problems.append("empty holdout")
-        if shutil.which("docker") is None or subprocess.run(["docker", "info"], capture_output=True).returncode != 0:
-            problems.append("docker daemon unreachable")
+        problems += self.env.preflight()
         try:
             import httpx
 
@@ -151,12 +139,15 @@ class Runner:
             problems.append("learning rate too high for the staleness bound")
         if problems:
             raise CycleAborted("preflight: " + "; ".join(problems))
-        from polyloop.harness.rollout import warm
+        checks = ["pool", "holdout", self.env.name, "trainer", "disk", "staleness"]
+        if self.env.needs_engine_warm:
+            from polyloop.harness.rollout import warm
 
-        t0 = time.monotonic()
-        warm(self.cfg.base_url, self.cfg.model, rank=self.stage.lora_rank, log=self._say)
-        self._charge("preflight", time.monotonic() - t0)
-        self.cycle.mark_done("preflight", checks=["pool", "holdout", "docker", "trainer", "disk", "staleness", "engine-warm"])
+            t0 = time.monotonic()
+            warm(self.cfg.base_url, self.cfg.model, rank=self.stage.lora_rank, log=self._say)
+            self._charge("preflight", time.monotonic() - t0)
+            checks.append("engine-warm")
+        self.cycle.mark_done("preflight", checks=checks)
 
     def filter(self) -> None:
         fc = self.cfg.filter
@@ -164,7 +155,7 @@ class Runner:
         inc_id = inc.get("id", "base")
         stats = self.store.cache("pool_stats")
         under = stats.setdefault(inc_id, {})
-        pool = load_tasks(self.cfg.tasks)
+        pool = self.env.load_tasks(self.cfg.tasks)
         out = self.cycle.subdir("filter")
         import random
 
@@ -179,7 +170,7 @@ class Runner:
             sample = rng.sample(unmeasured, min(fc.pool_sample, len(unmeasured)))
             rounds += 1
             self._say(f"filter round {rounds}: {len(contested())} contested so far; measuring {len(sample)} tasks x {fc.rollouts_per_task} under {inc_id}")
-            results = self._run_rollouts("filter", sample, inc.get("sampler_path"), fc.rollouts_per_task, out=out)
+            results = self._run_rollouts("filter", sample, inc, fc.rollouts_per_task, out=out)
             for r in results:
                 if r.error is None and r.rewards:
                     under[r.task] = {"pass_rate": r.mean, "n": len(r.rewards), "cycle": self.cycle.id}
@@ -249,8 +240,11 @@ class Runner:
 
                 traces = sorted(self._traces_dir().glob("*.jsonl"))
                 rows_path = log_path / "rows.jsonl"
-                n = write_rows(traces, rows_path, max_hint_chars=stage.max_hint_chars)
-                self.cycle.emit("opsd.rows", rows=n, trace_files=len(traces))
+                hints = self.env.session_hints()
+                excluded = self.env.excluded_sessions()
+                n = write_rows(traces, rows_path, max_hint_chars=stage.max_hint_chars, session_hints=hints,
+                               skip_sessions=excluded)
+                self.cycle.emit("opsd.rows", rows=n, trace_files=len(traces), session_hints=len(hints), excluded_sessions=len(excluded))
                 if n < stage.min_rows:
                     self._say(f"train[{i}] opsd: {n} rows (< {stage.min_rows}), skipped")
                     continue
@@ -286,8 +280,7 @@ class Runner:
             self._say(f"evaluate: incumbent {pid} cached")
             return cache[key]["per_task"]
         out = self.cycle.subdir(f"eval/{label}")
-        results = self._run_rollouts(f"evaluate.{label}", holdout, (policy or {}).get("sampler_path"), g.repeats,
-                                     temperature=g.temperature, out=out)
+        results = self._run_rollouts(f"evaluate.{label}", holdout, policy, g.repeats, temperature=g.temperature, out=out)
         errors = sum(1 for r in results if r.error)
         if errors / max(1, len(results)) > g.max_error_rate:
             raise CycleAborted(f"evaluate: {errors}/{len(results)} {label} rollouts errored")
@@ -298,7 +291,7 @@ class Runner:
 
     def evaluate(self) -> None:
         st = self.cycle.state
-        holdout = load_tasks(self.cfg.gate.holdout, names=st["holdout_names"])
+        holdout = self.env.load_tasks(self.cfg.gate.holdout, names=st["holdout_names"])
         inc_scores = self._eval_policy("incumbent", st.get("incumbent"), holdout)
         cand_scores = self._eval_policy("candidate", st["candidate"], holdout)
         self.cycle.update(eval_incumbent=inc_scores, eval_candidate=cand_scores)

@@ -64,7 +64,10 @@ def _hint(next_state: dict, max_chars: int) -> str | None:
 
 
 def iter_rows(trace_files: Iterable[Path], *, max_hint_chars: int = 2000, min_prefix_turns: int = 1,
-              skip_sessions: set[str] | None = None) -> Iterable[dict]:
+              skip_sessions: set[str] | None = None, session_hints: dict[str, str] | None = None) -> Iterable[dict]:
+    """`session_hints` (from the environment: a verdict, a judge's explanation) applies to every
+    turn of that session, after the next-state hint. A session's last turn has no next state and
+    becomes a row only when a session hint exists."""
     for path in trace_files:
         for line in Path(path).read_text().splitlines():
             if not line.strip():
@@ -73,9 +76,13 @@ def iter_rows(trace_files: Iterable[Path], *, max_hint_chars: int = 2000, min_pr
             if skip_sessions and rec.get("session") in skip_sessions:
                 continue
             ns = rec.get("next_state")
-            if not ns:
-                continue
-            hint = _hint(ns, max_hint_chars)
+            hint = _hint(ns, max_hint_chars) if ns else None
+            extra = (session_hints or {}).get(rec.get("session"))
+            if extra:
+                extra = extra.strip()
+                if len(extra) > max_hint_chars:
+                    extra = extra[:max_hint_chars]
+                hint = f"{hint}\n\n{extra}" if hint else extra
             if not hint:
                 continue
             prefix = _fold(rec.get("messages") or [])

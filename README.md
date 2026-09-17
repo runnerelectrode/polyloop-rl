@@ -116,8 +116,9 @@ The UI shows the current cycle's stage, sandboxes running, episodes as their rew
 training steps, GPU load, sessions that went through the proxy, the adapter the proxy is serving, and
 the held-out curve and receipts from every cycle so far.
 
-`loop.yaml` declares the model, the proxy, the stages (`rl`, `opsd`, each with its own budget and
-hyperparameters), the sandbox limits, the filter, the budget, the gate and the promote mode.
+`loop.yaml` declares the model, the proxy, the environment (where episodes come from, see
+`docs/ENVIRONMENTS.md`), the stages (`rl`, `opsd`, each with its own budget and hyperparameters),
+the sandbox limits, the filter, the budget, the gate and the promote mode.
 `program.md` next to it says what a proposing agent may change.
 
 ## What it builds on
@@ -148,6 +149,8 @@ polyloop/
   events.py        per-cycle events.jsonl + state.json, lineage.json
   stages.py        the eight stages, multi-stage train, resume logic, proxy notification
   receipt.py       paired stats, bootstrap CI, promotion_receipt.v1
+  environment.py   the Environment protocol + registry (tasks, rollouts, preflight, session hints)
+  envs/            harbor_docker: the default environment (Harbor tasks, cookbook bash loop, Docker)
   proxy.py         capture proxy: session headers, next-state pairing, live adapter, /admin routes
   sessions.py      drive mini-swe-agent through the proxy (local or docker), verify, log
   ui.py, report.py live page and static report
@@ -164,7 +167,8 @@ polyloop/
 recipes/pydantic-v2/   loop.yaml (9B), loop-4b.yaml (4B), agent.yaml (mini-swe-agent)
 recipes/swe-mini/      loop.yaml + program.md
 scripts/               node_up.sh (node bring-up), arch_diagram.py (docs/architecture.svg)
-docs/                  DESIGN, PRECEDENTS, DEMO-PLAN, BORROW-MAP, RESULTS, results/
+docs/                  DESIGN, ENVIRONMENTS, PRECEDENTS, DEMO-PLAN, BORROW-MAP, RESULTS, VOICE-LOOP-PLAN, results/
+tests/                 runner tests on a scripted environment (no GPU, no Docker)
 ```
 
 ## License
