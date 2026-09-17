@@ -11,13 +11,21 @@ routes) and adds what the loop needs:
   without a next state;
 - a live adapter: the sampler path is read from `<runs>/<loop>/live.json` at startup and
   after every `/admin/promote`, so a promoted cycle changes what the agent samples from
-  without touching the agent.
+  without touching the agent;
+- named policies: `/r/policy/<name>/v1/chat/completions` samples from the adapter registered
+  under `<name>` (`POST /admin/policies`, persisted in `<runs>/<loop>/policies.json`), so an
+  external evaluator (Coval in the voice recipe) can score the candidate and the incumbent
+  side by side while `/v1/chat/completions` keeps serving the live adapter;
+- an optional bearer token (`--auth-token`, `POLYLOOP_PROXY_TOKEN`), required once the proxy
+  is reachable from outside the node, and an optional system prompt prepended on policy
+  routes (the simulated caller sends only the conversation).
 
 Records land as one JSON line per assistant turn under `<runs>/<loop>/traces/<date>.jsonl`.
 """
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import hashlib
 import json
 import time
@@ -30,6 +38,63 @@ from aiohttp import web
 from polyloop.events import now_iso, read_json, write_json
 
 MAIN, SIDE = "main", "side"
+_POLICY: contextvars.ContextVar[str | None] = contextvars.ContextVar("polyloop_policy", default=None)
+
+
+class PolicyRouter:
+    """Stands in for the cookbook proxy's single sampling client. `sample_async` goes to the
+    policy the current request addressed (set by the capture middleware from the
+    `/r/policy/<name>/` path prefix), otherwise to the live adapter. Each aiohttp handler runs
+    in its own task, so the contextvar isolates concurrent requests."""
+
+    def __init__(self, make_client, live_client, live_label: str, path: Path | None = None):
+        self._make_client = make_client          # sampler_path | None -> sampling client
+        self.live = live_client
+        self.live_label = live_label
+        self.path = path
+        self.policies: dict[str, dict] = {}
+        if path and path.exists():
+            for name, rec in read_json(path, {}).items():
+                self.register(name, rec.get("sampler_path"), save=False)
+
+    def register(self, name: str, sampler_path: str | None, save: bool = True) -> dict:
+        rec = {"sampler_path": sampler_path, "client": self._make_client(sampler_path), "registered": now_iso()}
+        self.policies[name] = rec
+        if save and self.path:
+            write_json(self.path, {n: {"sampler_path": r["sampler_path"], "registered": r["registered"]} for n, r in self.policies.items()})
+        return rec
+
+    def public(self) -> dict:
+        return {n: {"sampler_path": r["sampler_path"], "registered": r["registered"]} for n, r in self.policies.items()}
+
+    async def sample_async(self, *args, **kwargs):
+        name = _POLICY.get()
+        client = self.live if name is None else self.policies[name]["client"]
+        return await client.sample_async(*args, **kwargs)
+
+    def __getattr__(self, item):  # anything else the cookbook touches on a sampling client
+        return getattr(self.live, item)
+
+
+def policy_from_path(path: str) -> str | None:
+    """`/r/key/value/.../v1/chat/completions` -> the `policy` value, if the address has one."""
+    if not path.startswith("/r/"):
+        return None
+    for marker in ("/v1/chat/completions", "/v1/messages"):
+        if path.endswith(marker):
+            segs = [x for x in path[len("/r/"):-len(marker)].split("/") if x]
+            pairs = dict(zip(segs[::2], segs[1::2])) if len(segs) % 2 == 0 else {}
+            return pairs.get("policy")
+    return None
+
+
+def with_system_prompt(body: dict, system_prompt: str | None) -> dict:
+    if not system_prompt:
+        return body
+    msgs = list(body.get("messages") or [])
+    if msgs and msgs[0].get("role") == "system":
+        return body
+    return {**body, "messages": [{"role": "system", "content": system_prompt}, *msgs]}
 
 
 @dataclass
@@ -126,7 +191,7 @@ def _extract_anthropic(resp: dict) -> tuple[str, list[dict], dict]:
 
 
 def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: Path, loop_name: str,
-             default_max_tokens: int = 4096) -> web.Application:
+             default_max_tokens: int = 4096, auth_token: str | None = None, system_prompt: str | None = None) -> web.Application:
     import tinker
     from tinker_cookbook.capture.proxy.app import ProxyDeps, make_app as cookbook_app
     from tinker_cookbook.model_info import get_recommended_renderer_name
@@ -145,21 +210,23 @@ def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: 
     rname = renderer_name or get_recommended_renderer_name(model)
     renderer = get_renderer(rname, get_tokenizer(model), model_name=model)
 
+    def make_client(path: str | None):
+        return service.create_sampling_client(model_path=path) if path else service.create_sampling_client(base_model=model)
+
     def sampling_client():
         live = read_json(live_path, {})
         path = live.get("sampler_path")
-        if path:
-            return service.create_sampling_client(model_path=path), path
-        return service.create_sampling_client(base_model=model), model
+        return make_client(path), (path or model)
 
     sc, label = sampling_client()
-    deps = ProxyDeps(renderer=renderer, sampling_client=sc, model_label=label, default_max_tokens=default_max_tokens)
-    inner = cookbook_app(deps)
+    router = PolicyRouter(make_client, sc, label, loop_dir / "policies.json")
+    deps = ProxyDeps(renderer=renderer, sampling_client=router, model_label=label, default_max_tokens=default_max_tokens)
+    inner = cookbook_app(deps, auth_token=auth_token)
     store = TraceStore(loop_dir / "traces")
 
     async def reload_live() -> str:
         sc2, label2 = sampling_client()
-        deps.sampling_client = sc2
+        router.live, router.live_label = sc2, label2
         deps.model_label = label2
         return label2
 
@@ -175,6 +242,13 @@ def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: 
             body = json.loads(raw or b"{}")
         except json.JSONDecodeError:
             return await handler(request)
+        policy = policy_from_path(path)
+        if policy is not None:
+            if policy not in router.policies:
+                return web.json_response({"error": f"unknown policy {policy!r}; register it with POST /admin/policies"}, status=404)
+            _POLICY.set(policy)
+            body = with_system_prompt(body, system_prompt)
+            request._read_bytes = json.dumps(body).encode()  # noqa: SLF001
         if body.get("stream"):
             body["stream"] = False  # record the full turn; agents we target accept non-streaming
             request._read_bytes = json.dumps(body).encode()  # noqa: SLF001
@@ -212,16 +286,31 @@ def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: 
 
     async def status(request: web.Request) -> web.Response:
         return web.json_response({"live": deps.model_label, "pending_sessions": len(store.pending),
-                                  "traces_dir": str(store.root)})
+                                  "traces_dir": str(store.root), "policies": router.public(),
+                                  "system_prompt": bool(system_prompt), "auth": bool(auth_token)})
+
+    async def policies(request: web.Request) -> web.Response:
+        if request.method == "GET":
+            return web.json_response({"live": deps.model_label, "policies": router.public()})
+        body = await request.json()
+        name = str(body.get("name") or "").strip()
+        if not name or "/" in name:
+            return web.json_response({"error": "name must be a non-empty path segment"}, status=400)
+        rec = router.register(name, body.get("sampler_path") or None)
+        return web.json_response({"policy": name, "sampler_path": rec["sampler_path"],
+                                  "route": f"/r/policy/{name}/v1/chat/completions"})
 
     inner["polyloop_keepalive"] = keepalive
     inner.router.add_post("/admin/promote", promote)
     inner.router.add_post("/admin/session/{session}/done", session_done)
     inner.router.add_get("/admin/status", status)
+    inner.router.add_get("/admin/policies", policies)
+    inner.router.add_post("/admin/policies", policies)
     return inner
 
 
 def serve(host: str, port: int, **kw) -> None:
     app = make_app(**kw)
-    print(f"polyloop proxy on http://{host}:{port}  (OpenAI: /v1/chat/completions, Anthropic: /v1/messages, admin: /admin/status)", flush=True)
+    print(f"polyloop proxy on http://{host}:{port}  (OpenAI: /v1/chat/completions, Anthropic: /v1/messages, "
+          f"policies: /r/policy/<name>/v1/chat/completions, admin: /admin/status)", flush=True)
     web.run_app(app, host=host, port=port, print=None)

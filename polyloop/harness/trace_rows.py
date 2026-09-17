@@ -10,6 +10,11 @@ capture is not load-bearing here; it matters for the GRPO path, which uses sandb
 Row format is rlcli's OPSD prompts JSONL: {"messages": [...system/user/assistant...], "hint": str}.
 Tool-role messages are folded into user text because rlcli's loader keeps only
 system/user/assistant.
+
+`session_hints` adds a per-session hindsight text (a judge's verdict and explanation for the
+whole conversation, from Coval in the voice recipe) to every row of that session, after the
+next-state hint. A session's last turn has no next state; with a session hint it still becomes
+a row, hinted by the verdict alone.
 """
 from __future__ import annotations
 
@@ -64,7 +69,7 @@ def _hint(next_state: dict, max_chars: int) -> str | None:
 
 
 def iter_rows(trace_files: Iterable[Path], *, max_hint_chars: int = 2000, min_prefix_turns: int = 1,
-              skip_sessions: set[str] | None = None) -> Iterable[dict]:
+              skip_sessions: set[str] | None = None, session_hints: dict[str, str] | None = None) -> Iterable[dict]:
     for path in trace_files:
         for line in Path(path).read_text().splitlines():
             if not line.strip():
@@ -73,9 +78,12 @@ def iter_rows(trace_files: Iterable[Path], *, max_hint_chars: int = 2000, min_pr
             if skip_sessions and rec.get("session") in skip_sessions:
                 continue
             ns = rec.get("next_state")
-            if not ns:
-                continue
-            hint = _hint(ns, max_hint_chars)
+            hint = _hint(ns, max_hint_chars) if ns else None
+            extra = (session_hints or {}).get(rec.get("session"))
+            if hint and extra:
+                hint = f"{hint}\n\n{extra}"
+            elif extra:
+                hint = extra
             if not hint:
                 continue
             prefix = _fold(rec.get("messages") or [])

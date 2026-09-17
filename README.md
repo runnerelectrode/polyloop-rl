@@ -68,6 +68,12 @@ the receipt are in `docs/RESULTS.md` and `docs/results/`.
 A second recipe, `recipes/swe-mini/`, targets SWE-smith tasks with a SWE-bench Verified holdout
 (`polyloop tasks swesmith`); it has not run a full cycle yet.
 
+A third, `recipes/voice-coval/`, is the same cycle for the LLM inside a voice agent: the
+environment is [Coval](https://coval.ai)'s simulated caller, the verifier is Coval's judge
+metrics, the reward is read back over Coval's API, the judge's explanation becomes the OPSD
+hint, and the gate is a held-out Coval test set. It pins `nvidia/Nemotron-Flash-3B-Instruct`;
+its README says what that model needs on the serving side today. Not run yet.
+
 ## Install (on the GPU node)
 
 `scripts/node_up.sh` does all of this idempotently on a fresh Ubuntu 22.04 / CUDA 12.8 node:
@@ -129,6 +135,7 @@ hyperparameters), the sandbox limits, the filter, the budget, the gate and the p
 | Token-in/token-out bridge, Docker sandbox, logprob agreement guard, hinted teacher | rlcli (`tito_bridge`, `sandbox_docker`, `logprob_guard`, `opsd`) |
 | Session headers, next-state hint, "harness must ingest, learn, grade" | [OpenClaw-RL](https://github.com/Gen-Verse/OpenClaw-RL) (contract only; this proxy is token-exact) |
 | Task format and the SWE-bench Verified tasks | [Harbor](https://github.com/harbor-framework/harbor) |
+| Simulated callers, judge metrics and their explanations for the voice recipe | [Coval](https://docs.coval.ai) v1 API (runs, simulated conversations, metric outputs) |
 | The coding agent driven through the proxy | [mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent) |
 | Verifier recipe and reward-hack closures for SWE-smith | [Agent Lightning](https://github.com/microsoft/agent-lightning) `examples/swe_smith` |
 | RL on API migration (function level) | ReCode, AAAI 2026: the prior result this task family extends to repo-level, gated, nightly |
@@ -148,21 +155,24 @@ polyloop/
   events.py        per-cycle events.jsonl + state.json, lineage.json
   stages.py        the eight stages, multi-stage train, resume logic, proxy notification
   receipt.py       paired stats, bootstrap CI, promotion_receipt.v1
-  proxy.py         capture proxy: session headers, next-state pairing, live adapter, /admin routes
+  proxy.py         capture proxy: session headers, next-state pairing, live adapter, named policy routes, /admin routes
   sessions.py      drive mini-swe-agent through the proxy (local or docker), verify, log
   ui.py, report.py live page and static report
   harness/
     rollout.py     K episodes per task for one checkpoint (filter + evaluate), engine warm-up
     train.py       rl worker: cookbook Harbor RL run from a JSON spec, in its own process
     train_opsd.py  opsd worker: hinted on-policy self-distillation from trace rows
-    trace_rows.py  traces/*.jsonl -> {messages, hint} rows
+    trace_rows.py  traces/*.jsonl -> {messages, hint} rows (+ per-session judge hints)
+    coval.py       Coval as environment + verifier: test cases as tasks, runs as rollouts, judge text as hints
     kl_guard.py    tolerant KL-to-sampler metric (logs length mismatches instead of crashing)
   tasks/
     pydantic_v2.py pydantic tests -> v1-idiom migration tasks with a strict verifier
     swesmith.py    SWE-smith rows -> Harbor tasks with a fast verifier
-  cli.py           run | approve | history | status | eval | warm | proxy | sessions | ui | report | tasks
+  cli.py           run | approve | history | status | eval | warm | proxy | sessions | ui | report | tasks | coval
 recipes/pydantic-v2/   loop.yaml (9B), loop-4b.yaml (4B), agent.yaml (mini-swe-agent)
 recipes/swe-mini/      loop.yaml + program.md
+recipes/voice-coval/   loop.yaml, system.md, scenarios-*.json, program.md, README.md
+tests/                 pytest: config, coval client + rollouts, trace rows, proxy policy routing
 scripts/               node_up.sh (node bring-up), arch_diagram.py (docs/architecture.svg)
 docs/                  DESIGN, PRECEDENTS, DEMO-PLAN, BORROW-MAP, RESULTS, results/
 ```

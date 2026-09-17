@@ -1,0 +1,87 @@
+# polyloop-rl voice loop: the LLM behind a voice agent (Nemotron Flash, NVIDIA's latency-optimised
+# hybrid Mamba/attention 3B model) improves nightly from Coval evals.
+#
+#   environment  Coval's simulated caller (persona) plays the recipe's scenarios (test set) against
+#                the proxy; every conversation is a session the proxy captures.
+#   verifier     Coval metrics (LLM judges on the transcript) score each conversation; the mean of
+#                `coval.metric_ids` is the reward. The judge's explanation becomes the hindsight hint.
+#   train        hinted on-policy self-distillation (OPSD) on the captured sessions.
+#   gate         candidate vs incumbent on a held-out Coval test set, K repeats, paired per scenario.
+#
+# What is measured is owned here: the two test sets, the metric ids, the thresholds, the budget.
+# See README.md next to this file for the setup and program.md for what a proposer may change.
+name: voice-coval
+model: nvidia/Nemotron-Flash-3B-Instruct
+# Nemotron Flash ships no chat template; its documented prompt is "User: ...\nAssistant:". The
+# cookbook's role_colon renderer is that format with a blank line between turns ("User: ...\n\n
+# Assistant: ..."); the OPSD stage trains the adapter under the renderer it samples with, so the
+# extra newline is learned away in the first steps. See README.md, "Serving Nemotron Flash".
+renderer: role_colon
+base_url: http://127.0.0.1:8000
+proxy_url: http://127.0.0.1:8787
+runs_dir: ~/polyloop-runs
+tasks: coval://REPLACE_POOL_TEST_SET          # `polyloop coval seed --test-set pool --file scenarios-pool.json`
+
+stages:
+  - kind: opsd
+    harness: coval
+    group_size: 2                 # student samples per prompt
+    groups_per_batch: 16
+    steps: 4
+    learning_rate: 1.0e-5
+    max_tokens: 256               # one spoken turn; matches coval.max_tokens
+    max_trajectory_tokens: 4096
+    lora_rank: 32
+    kl_penalty_coef: 1.0
+    max_hint_chars: 1500          # next caller line + judge explanation
+    min_rows: 16
+    save_every: 2
+
+sandbox:                          # unused by a coval loop (no Docker); kept for the schema
+  backend: none
+  max_parallel: 8
+
+filter:
+  pool_sample: 20                 # scenarios measured per round under the incumbent ...
+  rollouts_per_task: 3            # ... x simulations each = 60 Coval conversations per round
+  keep_min: 0.0
+  keep_max: 1.0
+  min_tasks: 4
+  target_tasks: 10
+  max_rounds: 2
+
+budget:
+  gpus: 2
+  max_cycle_gpu_seconds: 10800    # 1.5 h x 2 GPUs; Coval time counts (the sampler is busy)
+
+gate:
+  holdout: coval://REPLACE_HOLDOUT_TEST_SET   # `polyloop coval seed --test-set holdout --file scenarios-holdout.json`
+  holdout_limit: 24
+  holdout_seed: 0
+  repeats: 4
+  temperature: 1.0                # must equal coval.temperature (preflight checks)
+  min_delta: 0.05                 # paired mean reward delta the candidate must beat
+  tie_band: 0.05
+  max_regressions: 2
+  logprob_abs_diff_max: 0.05
+  max_error_rate: 0.2
+
+promote:
+  mode: approve
+
+coval:
+  agent_id: REPLACE_AGENT_ID       # MODEL_TYPE_CHAT agent in Coval; its chat_endpoint is the proxy (see README)
+  persona_id: REPLACE_PERSONA_ID   # the simulated caller
+  metric_ids:                      # numeric metrics; binary LLM judges score 0/1. Reward = their mean.
+    - REPLACE_METRIC_TASK_COMPLETED
+    - REPLACE_METRIC_NO_HALLUCINATED_POLICY
+  public_url: https://REPLACE.trycloudflare.com   # the tunnel to the proxy; Coval refuses http and private IPs
+  concurrency: 8
+  poll_seconds: 15
+  run_timeout: 3600
+  temperature: 1.0
+  max_tokens: 256
+  system_prompt: system.md         # prepended by the proxy on policy routes (Coval sends only the dialogue)
+  pass_value: 1.0
+  hint_failures_only: true         # the judge's explanation only hints the sessions that failed
+  max_judge_chars: 1200

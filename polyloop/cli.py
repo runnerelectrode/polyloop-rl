@@ -74,31 +74,48 @@ def status(loop_path, cycle_id):
 
 @main.command("eval")
 @click.option("--loop", "loop_path", required=True)
-@click.option("--dataset", default=None, help="Harbor dataset dir (default: the loop's holdout).")
+@click.option("--dataset", default=None, help="Harbor dataset dir or coval://<test_set_id> (default: the loop's holdout).")
 @click.option("--limit", type=int, default=None)
 @click.option("--sampler-path", default=None, help="tinker:// sampler checkpoint; default = base model")
+@click.option("--policy-id", default=None, help="Name for the policy (coval loops: the proxy route and Coval agent it gets); default = base")
 @click.option("--repeats", "-k", type=int, default=1)
 @click.option("--out", default=None)
-def eval_cmd(loop_path, dataset, limit, sampler_path, repeats, out):
+def eval_cmd(loop_path, dataset, limit, sampler_path, policy_id, repeats, out):
     """Ad-hoc: score a checkpoint on a task set (baseline numbers)."""
     import asyncio
 
     from polyloop.harness.rollout import load_tasks, run_rollouts, warm
 
-    cfg, _ = _store(loop_path)
+    cfg, store = _store(loop_path)
     g, s, sb = cfg.gate, cfg.stages[0], cfg.sandbox
-    warm(cfg.base_url, cfg.model, rank=s.lora_rank, log=click.echo)
-    tasks = load_tasks(dataset or g.holdout, limit=limit or g.holdout_limit, seed=g.holdout_seed)
+    client = None
+    if cfg.coval:
+        from polyloop.harness.coval import CovalClient
+
+        client = CovalClient.from_env(api_base=cfg.coval.api_base, api_key_env=cfg.coval.api_key_env)
+    else:
+        warm(cfg.base_url, cfg.model, rank=s.lora_rank, log=click.echo)
+    tasks = load_tasks(dataset or g.holdout, limit=limit or g.holdout_limit, seed=g.holdout_seed, coval_client=client)
     out_path = Path(out).expanduser() if out else None
     if out_path:
         out_path.mkdir(parents=True, exist_ok=True)
 
     def on_result(r):
         click.echo(f"  {r.task:50} {r.rewards} {r.error or ''} ({r.seconds:.0f}s, turns {r.turns})")
-        if out_path:
+        if out_path and not cfg.coval:
             with (out_path / "results.jsonl").open("a") as f:
                 f.write(json.dumps(r.to_dict()) + "\n")
 
+    if cfg.coval:
+        from polyloop.harness.coval import run_coval_rollouts
+
+        results = run_coval_rollouts(cfg=cfg, client=client, store=store, tasks=tasks, policy_id=policy_id or "base",
+                                     sampler_path=sampler_path, k=repeats, label="eval", out=out_path,
+                                     on_result=on_result, log=click.echo)
+        ok = [r for r in results if r.error is None and r.mean is not None]
+        mean = sum(r.mean for r in ok) / len(ok) if ok else float("nan")
+        click.echo(f"{len(ok)}/{len(results)} tasks scored, mean reward {mean:.3f}, errors {len(results) - len(ok)}")
+        return
     results = asyncio.run(run_rollouts(
         base_url=cfg.base_url, model=cfg.model, renderer=cfg.renderer, tasks=tasks, sampler_path=sampler_path,
         k=repeats, max_parallel=sb.max_parallel, max_tokens=s.max_tokens, max_turns=s.max_turns,
@@ -115,13 +132,22 @@ def eval_cmd(loop_path, dataset, limit, sampler_path, repeats, out):
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", type=int, default=8787, show_default=True)
 @click.option("--max-tokens", type=int, default=4096, show_default=True)
-def proxy_cmd(loop_path, host, port, max_tokens):
-    """OpenAI/Anthropic-compatible endpoint for your coding agent; records sessions; serves the live adapter."""
+@click.option("--auth-token", envvar="POLYLOOP_PROXY_TOKEN", default=None,
+              help="Bearer token every request (except /healthz) must carry. Set it before exposing the proxy (a coval loop does).")
+def proxy_cmd(loop_path, host, port, max_tokens, auth_token):
+    """OpenAI/Anthropic-compatible endpoint for your agent; records sessions; serves the live adapter and named policies."""
     from polyloop.proxy import serve
 
     cfg, _ = _store(loop_path)
+    sp = cfg.system_prompt_path
+    system_prompt = sp.read_text().strip() if sp and sp.exists() else None
+    if sp and not sp.exists():
+        raise SystemExit(f"coval.system_prompt not found: {sp}")
+    if cfg.coval and not auth_token:
+        click.echo("warning: coval loop without --auth-token / POLYLOOP_PROXY_TOKEN; the public tunnel will be open", err=True)
     serve(host, port, base_url=cfg.base_url, model=cfg.model, renderer_name=cfg.renderer,
-          runs_dir=cfg.runs_path, loop_name=cfg.name, default_max_tokens=max_tokens)
+          runs_dir=cfg.runs_path, loop_name=cfg.name, default_max_tokens=max_tokens,
+          auth_token=auth_token, system_prompt=system_prompt)
 
 
 @main.command("sessions")
@@ -185,6 +211,92 @@ def ui_cmd(loop_path, host, port, refresh, log_path):
 
     cfg, store = _store(loop_path)
     serve(cfg, store, host, port, refresh, Path(log_path).expanduser() if log_path else None)
+
+
+@main.group("coval")
+def coval():
+    """Coval-backed loops: check the wiring, inspect the session ledger."""
+
+
+@coval.command("check")
+@click.option("--loop", "loop_path", required=True)
+def coval_check(loop_path):
+    """Resolve the agent, persona, test sets and metrics named in loop.yaml; probe the proxy locally and publicly."""
+    import httpx
+
+    from polyloop.harness.coval import CovalClient, policy_endpoint, test_set_id
+
+    cfg, store = _store(loop_path)
+    if not cfg.coval:
+        raise SystemExit("loop.yaml has no `coval:` block")
+    cv = cfg.coval
+    client = CovalClient.from_env(api_base=cv.api_base, api_key_env=cv.api_key_env)
+    agent = client.agent(cv.agent_id)
+    click.echo(f"agent    {cv.agent_id}  {agent.get('display_name')!r}  {agent.get('model_type')}  chat_endpoint={ (agent.get('metadata') or {}).get('chat_endpoint') }")
+    persona = client.persona(cv.persona_id)
+    click.echo(f"persona  {cv.persona_id}  {persona.get('display_name') or persona.get('name')!r}")
+    for label, ds in (("pool", cfg.tasks), ("holdout", cfg.gate.holdout)):
+        ts = client.test_set(test_set_id(ds))
+        click.echo(f"{label:8} {ds}  {ts.get('display_name')!r}  {ts.get('test_case_count')} test cases  type={ts.get('test_set_type')}")
+    for m in client.metrics(cv.metric_ids):
+        click.echo(f"metric   {m.get('id')}  {m.get('metric_name')!r}  {m.get('metric_type')}")
+    agents = store.cache("coval_agents")
+    for key, rec in agents.items():
+        click.echo(f"policy agent {key.split(':', 1)[1]:24} {rec['agent_id']}  {rec['chat_endpoint']}")
+    click.echo(f"live route   {policy_endpoint(cv.public_url, 'live')}")
+    ledger = store.root / cv.ledger
+    n = sum(1 for l in ledger.read_text().splitlines() if l.strip()) if ledger.exists() else 0
+    click.echo(f"ledger   {ledger}  {n} scored sessions")
+    for label, url in (("proxy", (cfg.proxy_url or "").rstrip("/") + "/admin/status"), ("public", cv.public_url.rstrip("/") + "/healthz")):
+        try:
+            from polyloop.stages import _proxy_headers
+
+            r = httpx.get(url, headers=_proxy_headers() if label == "proxy" else {}, timeout=15)
+            click.echo(f"{label:8} {url}  {r.status_code}  {r.text[:160]}")
+        except Exception as exc:
+            click.echo(f"{label:8} {url}  unreachable: {exc}")
+
+
+@coval.command("seed")
+@click.option("--loop", "loop_path", required=True)
+@click.option("--test-set", "which", type=click.Choice(["pool", "holdout"]), required=True, help="Which of the loop's two test sets to fill.")
+@click.option("--file", "path", required=True, help="JSON list of {input, expected[], description} scenarios.")
+def coval_seed(loop_path, which, path):
+    """Create the recipe's scenario test cases in a Coval test set (skips inputs that already exist)."""
+    from polyloop.harness.coval import CovalClient, seed_test_cases, test_set_id
+
+    cfg, _ = _store(loop_path)
+    if not cfg.coval:
+        raise SystemExit("loop.yaml has no `coval:` block")
+    client = CovalClient.from_env(api_base=cfg.coval.api_base, api_key_env=cfg.coval.api_key_env)
+    ts = test_set_id(cfg.tasks if which == "pool" else cfg.gate.holdout)
+    cases = json.loads(Path(path).expanduser().read_text())
+    ids = seed_test_cases(client, ts, cases)
+    click.echo(f"test set {ts}: created {len(ids)} of {len(cases)} test cases ({len(cases) - len(ids)} already present)")
+
+
+@coval.command("ledger")
+@click.option("--loop", "loop_path", required=True)
+@click.option("--policy", default=None, help="Only sessions scored under this policy name.")
+@click.option("--failed/--all", default=False, help="Only sessions below coval.pass_value.")
+@click.option("--limit", type=int, default=20)
+def coval_ledger(loop_path, policy, failed, limit):
+    """Tail the per-session ledger: reward, metric values and the judge's explanation."""
+    cfg, store = _store(loop_path)
+    if not cfg.coval:
+        raise SystemExit("loop.yaml has no `coval:` block")
+    ledger = store.root / cfg.coval.ledger
+    if not ledger.exists():
+        raise SystemExit(f"no ledger yet at {ledger}")
+    recs = [json.loads(l) for l in ledger.read_text().splitlines() if l.strip()]
+    if policy:
+        recs = [r for r in recs if r.get("policy") == policy]
+    if failed:
+        recs = [r for r in recs if r.get("reward") is not None and r["reward"] < cfg.coval.pass_value]
+    for r in recs[-limit:]:
+        click.echo(f"{r['ts']}  {r['policy']:20} {str(r.get('task')):14} reward={r.get('reward')}  {r['session']}")
+        if r.get("explanation"):
+            click.echo("    " + r["explanation"].replace("\n", "\n    ")[:600])
 
 
 @main.group("tasks")

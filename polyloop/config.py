@@ -88,6 +88,29 @@ class PromoteConfig:
 
 
 @dataclass
+class CovalConfig:
+    """Coval (coval.ai) as the environment and the verifier: Coval's simulated user talks to the
+    policy through the proxy, Coval's metrics score every conversation, polyloop reads the
+    scores back as rewards. `tasks` and `gate.holdout` are then `coval://<test_set_id>`."""
+    agent_id: str                         # the CHAT agent in Coval whose chat_endpoint is the proxy (base config)
+    persona_id: str                       # the simulated caller
+    metric_ids: list[str]                 # reward per conversation = mean of these numeric metrics (binary judges -> 0/1)
+    public_url: str                       # HTTPS URL Coval reaches the proxy at (a tunnel; Coval refuses private IPs)
+    api_base: str = "https://api.coval.dev/v1"
+    api_key_env: str = "COVAL_API_KEY"
+    concurrency: int = 8                  # simulations Coval runs in parallel per run
+    poll_seconds: int = 15
+    run_timeout: int = 3600               # seconds to wait for one run before the stage errors
+    temperature: float = 1.0              # sampling params the per-policy agent sends in its OpenAI request
+    max_tokens: int = 256
+    system_prompt: str | None = None      # file (relative to loop.yaml) the proxy prepends on policy routes
+    pass_value: float = 1.0               # reward >= this counts as passed; failures get the judge hint
+    hint_failures_only: bool = True       # append the judge explanation only to failed sessions' rows
+    max_judge_chars: int = 1200
+    ledger: str = "coval_sessions.jsonl"  # per-session rewards + explanations, under runs/<loop>/
+
+
+@dataclass
 class LoopConfig:
     name: str
     model: str
@@ -104,12 +127,22 @@ class LoopConfig:
     budget: BudgetConfig = field(default_factory=BudgetConfig)
     gate: GateConfig = field(default_factory=GateConfig)
     promote: PromoteConfig = field(default_factory=PromoteConfig)
+    coval: CovalConfig | None = None      # set -> rollouts go through Coval instead of Docker sandboxes
     replay_fraction: float = 0.05
     source_path: str | None = None
 
     @property
     def runs_path(self) -> Path:
         return Path(self.runs_dir).expanduser()
+
+    @property
+    def system_prompt_path(self) -> Path | None:
+        if not (self.coval and self.coval.system_prompt):
+            return None
+        p = Path(self.coval.system_prompt).expanduser()
+        if not p.is_absolute() and self.source_path:
+            p = Path(self.source_path).parent / p
+        return p
 
 
 def _build(cls, data: dict[str, Any] | None):
@@ -125,6 +158,7 @@ def load_loop(path: str | Path) -> LoopConfig:
     p = Path(path).expanduser()
     raw = yaml.safe_load(p.read_text()) or {}
     stages = [_build(StageConfig, s) for s in raw.pop("stages", [])] or [StageConfig()]
+    coval_raw = raw.pop("coval", None)
     cfg = LoopConfig(
         name=raw.pop("name"),
         model=raw.pop("model"),
@@ -141,9 +175,19 @@ def load_loop(path: str | Path) -> LoopConfig:
         budget=_build(BudgetConfig, raw.pop("budget", None)),
         gate=_build(GateConfig, raw.pop("gate", None)),
         promote=_build(PromoteConfig, raw.pop("promote", None)),
+        coval=_build(CovalConfig, coval_raw) if coval_raw is not None else None,
         replay_fraction=raw.pop("replay_fraction", 0.05),
         source_path=str(p),
     )
     if raw:
         raise ValueError(f"loop.yaml: unknown top-level keys {sorted(raw)}")
+    if cfg.coval:
+        for label, ds in (("tasks", cfg.tasks), ("gate.holdout", cfg.gate.holdout)):
+            if not ds.startswith("coval://"):
+                raise ValueError(f"loop.yaml: with a `coval:` block, {label} must be coval://<test_set_id>, got {ds!r}")
+        if cfg.tasks == cfg.gate.holdout:
+            raise ValueError("loop.yaml: tasks and gate.holdout name the same Coval test set; the holdout must never be trained on")
+        for st in cfg.stages:
+            if st.kind == "rl":
+                raise ValueError("loop.yaml: an `rl` stage needs Docker sandboxes; a coval loop trains with `opsd` (see recipes/voice-coval/program.md)")
     return cfg
