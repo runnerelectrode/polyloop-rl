@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -65,19 +66,37 @@ class Runner:
         kw.update(over)
         return kw
 
-    def _run_rollouts(self, stage: str, tasks, sampler_path, k, temperature=1.0, out: Path | None = None) -> list[TaskResult]:
+    def _coval(self):
+        from polyloop.harness.coval import CovalClient
+
+        return CovalClient.from_env(api_base=self.cfg.coval.api_base, api_key_env=self.cfg.coval.api_key_env)
+
+    def _load_tasks(self, dataset: str, **kw):
+        return load_tasks(dataset, coval_client=self._coval() if self.cfg.coval else None, **kw)
+
+    def _run_rollouts(self, stage: str, tasks, sampler_path, k, temperature=1.0, out: Path | None = None,
+                      policy_id: str | None = None) -> list[TaskResult]:
         t0 = time.monotonic()
         results: list[TaskResult] = []
 
         def on_result(r: TaskResult):
             self.cycle.emit("rollout.task", stage=stage, task=r.task, rewards=r.rewards, error=r.error, seconds=round(r.seconds, 1))
-            if out:
+            if out and not self.cfg.coval:
                 with (out / "results.jsonl").open("a") as f:
                     f.write(json.dumps(r.to_dict()) + "\n")
 
-        results = asyncio.run(run_rollouts(tasks=tasks, sampler_path=sampler_path, k=k, temperature=temperature,
-                                           on_result=on_result, trajectories_dir=(out / "trajectories") if out else None,
-                                           **self._rollout_kwargs()))
+        if self.cfg.coval:
+            # The environment is Coval's simulated caller talking to the proxy; the verifier is
+            # Coval's metrics. Sampling happens on the proxy's registered policy route.
+            from polyloop.harness.coval import run_coval_rollouts
+
+            results = run_coval_rollouts(cfg=self.cfg, client=self._coval(), store=self.store, tasks=tasks,
+                                         policy_id=policy_id, sampler_path=sampler_path, k=k, label=stage, out=out,
+                                         on_result=on_result, log=self._say)
+        else:
+            results = asyncio.run(run_rollouts(tasks=tasks, sampler_path=sampler_path, k=k, temperature=temperature,
+                                               on_result=on_result, trajectories_dir=(out / "trajectories") if out else None,
+                                               **self._rollout_kwargs()))
         self._charge(stage, time.monotonic() - t0)
         return results
 
@@ -113,8 +132,8 @@ class Runner:
 
     def snapshot(self) -> None:
 
-        pool = load_tasks(self.cfg.tasks)
-        holdout = load_tasks(self.cfg.gate.holdout, limit=self.cfg.gate.holdout_limit, seed=self.cfg.gate.holdout_seed)
+        pool = self._load_tasks(self.cfg.tasks)
+        holdout = self._load_tasks(self.cfg.gate.holdout, limit=self.cfg.gate.holdout_limit, seed=self.cfg.gate.holdout_seed)
         hid = holdout_id([t.task_name for t in holdout])
         inc = self.store.incumbent()
         traces = sorted(self._traces_dir().glob("*.jsonl"))
@@ -134,7 +153,9 @@ class Runner:
             problems.append("empty task pool")
         if not st["holdout_names"]:
             problems.append("empty holdout")
-        if shutil.which("docker") is None or subprocess.run(["docker", "info"], capture_output=True).returncode != 0:
+        if self.cfg.coval:
+            problems += self._preflight_coval()
+        elif shutil.which("docker") is None or subprocess.run(["docker", "info"], capture_output=True).returncode != 0:
             problems.append("docker daemon unreachable")
         try:
             import httpx
@@ -156,7 +177,54 @@ class Runner:
         t0 = time.monotonic()
         warm(self.cfg.base_url, self.cfg.model, rank=self.stage.lora_rank, log=self._say)
         self._charge("preflight", time.monotonic() - t0)
-        self.cycle.mark_done("preflight", checks=["pool", "holdout", "docker", "trainer", "disk", "staleness", "engine-warm"])
+        env = "coval" if self.cfg.coval else "docker"
+        self.cycle.mark_done("preflight", checks=["pool", "holdout", env, "trainer", "disk", "staleness", "engine-warm"])
+
+    def _preflight_coval(self) -> list[str]:
+        """Config-only checks for the Coval environment: the API answers for the agent, the
+        persona and both test sets; the proxy is up locally and reachable at the public URL
+        (Coval refuses private addresses); the sampling temperature the agent sends matches
+        the gate's. No simulation is launched here."""
+        import httpx
+
+        cv = self.cfg.coval
+        problems = []
+        try:
+            client = self._coval()
+            agent = client.agent(cv.agent_id)
+            if agent.get("model_type") not in (None, "MODEL_TYPE_CHAT"):
+                problems.append(f"coval agent {cv.agent_id} is {agent.get('model_type')}, expected MODEL_TYPE_CHAT (the proxy is a chat endpoint)")
+            client.persona(cv.persona_id)
+            from polyloop.harness.coval import test_set_id
+
+            for ds in (self.cfg.tasks, self.cfg.gate.holdout):
+                client.test_set(test_set_id(ds))
+            for m in client.metrics(cv.metric_ids):
+                if not m:
+                    problems.append("a reward metric id does not resolve")
+        except Exception as exc:
+            problems.append(f"coval api: {type(exc).__name__}: {str(exc)[:200]}")
+        if abs(cv.temperature - self.cfg.gate.temperature) > 1e-9:
+            problems.append(f"coval.temperature {cv.temperature} != gate.temperature {self.cfg.gate.temperature} (the agent samples at coval.temperature)")
+        if not self.cfg.proxy_url:
+            problems.append("proxy_url unset (coval rollouts sample through the proxy's policy routes)")
+        else:
+            try:
+                r = httpx.get(self.cfg.proxy_url.rstrip("/") + "/admin/status", headers=_proxy_headers(), timeout=10)
+                if r.status_code >= 400:
+                    problems.append(f"proxy {r.status_code} at {self.cfg.proxy_url}")
+            except Exception as exc:
+                problems.append(f"proxy unreachable at {self.cfg.proxy_url}: {exc}")
+        if not cv.public_url.startswith("https://"):
+            problems.append(f"coval.public_url must be https (Coval refuses http and private IPs): {cv.public_url}")
+        else:
+            try:
+                r = httpx.get(cv.public_url.rstrip("/") + "/healthz", timeout=15)
+                if r.status_code >= 400:
+                    problems.append(f"public proxy {r.status_code} at {cv.public_url}/healthz")
+            except Exception as exc:
+                problems.append(f"public proxy unreachable at {cv.public_url}: {exc}")
+        return problems
 
     def filter(self) -> None:
         fc = self.cfg.filter
@@ -164,7 +232,7 @@ class Runner:
         inc_id = inc.get("id", "base")
         stats = self.store.cache("pool_stats")
         under = stats.setdefault(inc_id, {})
-        pool = load_tasks(self.cfg.tasks)
+        pool = self._load_tasks(self.cfg.tasks)
         out = self.cycle.subdir("filter")
         import random
 
@@ -179,7 +247,7 @@ class Runner:
             sample = rng.sample(unmeasured, min(fc.pool_sample, len(unmeasured)))
             rounds += 1
             self._say(f"filter round {rounds}: {len(contested())} contested so far; measuring {len(sample)} tasks x {fc.rollouts_per_task} under {inc_id}")
-            results = self._run_rollouts("filter", sample, inc.get("sampler_path"), fc.rollouts_per_task, out=out)
+            results = self._run_rollouts("filter", sample, inc.get("sampler_path"), fc.rollouts_per_task, out=out, policy_id=inc_id)
             for r in results:
                 if r.error is None and r.rewards:
                     under[r.task] = {"pass_rate": r.mean, "n": len(r.rewards), "cycle": self.cycle.id}
@@ -249,7 +317,17 @@ class Runner:
 
                 traces = sorted(self._traces_dir().glob("*.jsonl"))
                 rows_path = log_path / "rows.jsonl"
-                n = write_rows(traces, rows_path, max_hint_chars=stage.max_hint_chars)
+                session_hints = None
+                if self.cfg.coval:
+                    # The judge's verdict and explanation for each scored conversation (the
+                    # filter stage wrote them to the ledger) join the rows by session id.
+                    from polyloop.harness.coval import session_hints_from_ledger
+
+                    cv = self.cfg.coval
+                    session_hints = session_hints_from_ledger(self.store.root / cv.ledger, pass_value=cv.pass_value,
+                                                              failures_only=cv.hint_failures_only)
+                    self.cycle.emit("opsd.judge_hints", sessions=len(session_hints))
+                n = write_rows(traces, rows_path, max_hint_chars=stage.max_hint_chars, session_hints=session_hints)
                 self.cycle.emit("opsd.rows", rows=n, trace_files=len(traces))
                 if n < stage.min_rows:
                     self._say(f"train[{i}] opsd: {n} rows (< {stage.min_rows}), skipped")
@@ -287,7 +365,7 @@ class Runner:
             return cache[key]["per_task"]
         out = self.cycle.subdir(f"eval/{label}")
         results = self._run_rollouts(f"evaluate.{label}", holdout, (policy or {}).get("sampler_path"), g.repeats,
-                                     temperature=g.temperature, out=out)
+                                     temperature=g.temperature, out=out, policy_id=pid)
         errors = sum(1 for r in results if r.error)
         if errors / max(1, len(results)) > g.max_error_rate:
             raise CycleAborted(f"evaluate: {errors}/{len(results)} {label} rollouts errored")
@@ -298,7 +376,7 @@ class Runner:
 
     def evaluate(self) -> None:
         st = self.cycle.state
-        holdout = load_tasks(self.cfg.gate.holdout, names=st["holdout_names"])
+        holdout = self._load_tasks(self.cfg.gate.holdout, names=st["holdout_names"])
         inc_scores = self._eval_policy("incumbent", st.get("incumbent"), holdout)
         cand_scores = self._eval_policy("candidate", st["candidate"], holdout)
         self.cycle.update(eval_incumbent=inc_scores, eval_candidate=cand_scores)
@@ -359,6 +437,11 @@ class Runner:
             self.cycle.update(status="done")
 
 
+def _proxy_headers() -> dict:
+    token = os.environ.get("POLYLOOP_PROXY_TOKEN")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
 def notify_proxy(proxy_url: str | None, candidate: dict, receipt: str | None, log=print) -> None:
     if not proxy_url:
         return
@@ -366,7 +449,8 @@ def notify_proxy(proxy_url: str | None, candidate: dict, receipt: str | None, lo
         import httpx
 
         r = httpx.post(proxy_url.rstrip("/") + "/admin/promote",
-                       json={"sampler_path": candidate["sampler_path"], "candidate": candidate["id"], "receipt": receipt}, timeout=30)
+                       json={"sampler_path": candidate["sampler_path"], "candidate": candidate["id"], "receipt": receipt},
+                       headers=_proxy_headers(), timeout=30)
         log(f"proxy live -> {r.json().get('live')}")
     except Exception as exc:  # promotion is recorded either way; the proxy re-reads live.json on restart
         log(f"proxy notify failed: {exc}")

@@ -72,7 +72,15 @@ def warm(base_url: str, model: str, rank: int = 32, timeout: float = 2400.0, log
     return path or ""
 
 
-def load_tasks(dataset: str, limit: int | None = None, seed: int = 0, names: list[str] | None = None):
+def load_tasks(dataset: str, limit: int | None = None, seed: int = 0, names: list[str] | None = None, coval_client=None):
+    from polyloop.harness.coval import is_coval_dataset
+
+    if is_coval_dataset(dataset):
+        # coval://<test_set_id>: the tasks are Coval test cases; the environment is Coval's
+        # simulated caller, not a sandbox. Same shape (task_name) for every stage.
+        from polyloop.harness.coval import load_coval_tasks
+
+        return load_coval_tasks(dataset, client=coval_client, limit=limit, seed=seed, names=names)
     from tinker_cookbook.recipes.harbor_rl.harbor_env import load_harbor_tasks
 
     path = Path(dataset).expanduser()

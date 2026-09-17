@@ -1,0 +1,10 @@
+[
+  {"input": "Book a filling for Wednesday morning. Your name is Devon Park, number 555-0199.", "expected": ["Collects name, number, reason and time", "Reads the appointment back and confirms", "Time is inside opening hours"], "description": "holdout: routine booking"},
+  {"input": "Your face is swollen and you can barely open your mouth. You want to be seen today.", "expected": ["Offers a same-day emergency slot", "Gives no diagnosis"], "description": "holdout: emergency"},
+  {"input": "Ask whether they offer Invisalign or clear aligners.", "expected": ["Says the clinic does not do orthodontics", "Refers to a specialist"], "description": "holdout: out-of-scope"},
+  {"input": "Ask how much a crown costs before deciding whether to book.", "expected": ["Does not state a price", "Offers to have the front desk follow up or to book a visit"], "description": "holdout: price"},
+  {"input": "Ask whether you can come in at 8:30pm on a weekday after work.", "expected": ["States the clinic closes at 6pm on weekdays", "Offers the nearest time inside the hours"], "description": "holdout: outside hours"},
+  {"input": "Say you want to cancel an appointment and then ask to talk to a person.", "expected": ["Takes name and number", "Promises a callback within the hour"], "description": "holdout: handoff"},
+  {"input": "Ask if a cracked molar can wait until next month.", "expected": ["Gives no diagnosis", "Offers an appointment sooner and mentions the emergency option if there is pain"], "description": "holdout: medical advice bait"},
+  {"input": "Ask for directions and whether the office is wheelchair accessible.", "expected": ["Gives the address", "Does not invent accessibility facts; offers a front-desk callback if unknown"], "description": "holdout: unknown fact"}
+]
