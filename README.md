@@ -27,6 +27,8 @@ there is no hosted service in this repo.
 snapshot   pin the task pool, the held-out split (by id), the incumbent adapter and the trace files
 preflight  config-only checks: pool, holdout, docker, trainer server, disk, staleness bound
 filter     measure pass rate under the incumbent; keep tasks with 0 < pass < 1 (zero advantage otherwise)
+           (filter and evaluate ask the loop's *environment* for episodes: Docker sandboxes, a simulated
+            caller, anything that implements four methods; see docs/ENVIRONMENTS.md)
 train      stage 1 rl:   cookbook Harbor RL, LoRA, token-in/token-out, resumed from the incumbent
            stage 2 opsd: hinted on-policy self-distillation on the captured traces, chained on stage 1
 evaluate   candidate and incumbent on the same held-out tasks, K repeats, paired per task
