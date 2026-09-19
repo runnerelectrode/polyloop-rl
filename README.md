@@ -128,6 +128,58 @@ the held-out curve and receipts from every cycle so far.
 the sandbox limits, the filter, the budget, the gate and the promote mode.
 `program.md` next to it says what a proposing agent may change.
 
+## How the pieces fit: rlcli, polyloop, polyvoice
+
+Three layers, each usable without the one above it.
+
+```
+polyvoice        an ENVIRONMENT + RECIPE: Coval's simulated caller as the world, its judges as the reward,
+                 the dental receptionist scenarios, the ledger that joins calls to scores and explanations
+      │  implements polyloop's Environment protocol (load_tasks, run_rollouts, preflight, session_hints)
+polyloop-rl      the CONTROLLER: cycles (snapshot → … → gate → promote), the capture proxy, the receipt,
+                 the lineage, the budget, the UI. Owns what is measured; never how an episode is run.
+      │  calls rlcli + tinker-cookbook as libraries, and the Tinker API over HTTP
+rlcli            the TRAINING PRIMITIVES: `rlcli serve` (a Tinker-API server on SkyRL: trainer GPU +
+                 sampler GPU, LoRA, multi-adapter), the token-in/token-out bridge, Docker sandboxes,
+                 the hinted OPSD teacher, the trainer-vs-sampler logprob guard, trace import/capture
+      │  built on tinker-cookbook (renderers, RL and distillation loops, capture proxy) and SkyRL
+GPU node         any box with two GPUs: Lambda, a Modal container, your own
+```
+
+**rlcli** answers "how do I train this model at all": it stands up the server, turns a Harbor task or a
+prompt file into a training run, and guards the things that silently break RL (re-tokenization, trainer
+and sampler disagreeing on logprobs). It has no notion of a cycle, an incumbent or a promotion.
+
+**polyloop-rl** answers "is the new adapter better, and should it ship": it decides which tasks to
+train on (the filter), what to train (RL on verifiable tasks, then OPSD on captured traffic), how to
+compare (paired evaluation on a frozen held-out split with a bootstrap interval), and what happens on a
+pass (live.json, lineage, the proxy reloading). It reaches the model only through the Tinker API and
+reaches the world only through an environment.
+
+**polyvoice** answers "what is the world for a voice agent": Coval's persona phones the proxy, Coval's
+metrics score each call, the explanations become OPSD hints, and the held-out scenarios are the gate.
+Nothing in it touches training; it is the same shape as the built-in Docker Harbor environment.
+
+One voice cycle, end to end:
+
+1. `polyloop proxy` starts on the node, warms the sampler through rlcli's server, and is published on
+   a public https URL (Modal port forward, or a tunnel). Coval's agent points at it.
+2. `polyloop run` snapshots the pool, the held-out split and the incumbent. **filter** asks the Coval
+   environment for K calls per scenario; Coval's caller talks to the proxy, the proxy records every turn
+   token-exact, Coval scores each call, and the environment writes the ledger.
+3. **train** builds OPSD rows from the traces (prefix + hint from the next caller line + the judge's
+   explanation via `session_hints`), then runs rlcli's hinted-teacher self-distillation through the
+   Tinker API: a LoRA adapter on the incumbent.
+4. **evaluate** asks the environment for the held-out scenarios twice, telling the proxy to serve the
+   incumbent and then the candidate (`/admin/serve`); the environment marks those sessions excluded
+   from any future training.
+5. **gate** pairs the scores per scenario, bootstraps the interval, checks regressions and logprob
+   agreement, writes `receipt.json`. **promote** waits for `polyloop approve` (or auto), then writes
+   `live.json` and the proxy serves the winner. The caller never changed anything.
+
+Swap polyvoice for the built-in environment and the same five steps run a coding agent in Docker
+sandboxes with tests as the reward; that is the pydantic recipe.
+
 ## What it builds on
 
 | Piece | Where it comes from |
