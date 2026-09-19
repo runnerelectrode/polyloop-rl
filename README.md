@@ -15,10 +15,12 @@ thresholds, the budget and the lineage are declared in `loop.yaml` and owned by 
 
 Status: **v0 (September 2026).** The first complete unattended cycle ran on 2026-09-16 on a real
 coding-agent workload and the gate rejected the candidate; the numbers and why are in
-[`docs/RESULTS.md`](docs/RESULTS.md). On 2026-09-18 the same loop ran a second kind of agent through
-the environment interface: a voice receptionist scored by Coval's simulated callers, in the
-[polyvoice](https://github.com/polygramme/polyvoice) package (gate rejected +0.049 on 8 held-out
-scenarios; receipt there). Nothing here is a product yet. Everything runs on one GPU node you own;
+[`docs/RESULTS.md`](docs/RESULTS.md). On 2026-09-18 the same loop ran a second kind of agent through the environment interface: a voice
+receptionist scored by Coval's simulated callers, in the [polyvoice](https://github.com/polygramme/polyvoice)
+package. Two cycles: Qwen3.5-4B was rejected by a hair (+0.049 on 8 held-out scenarios), and PhoneLLM Alpha 1
+(Daily's phone-agent SFT of Nemotron 3 Nano 30B) earned the loop's first promotion, 0.875 → 0.953, delta
++0.078 with a 95% CI of [+0.031, +0.125], 5 wins / 0 losses / 3 ties; receipts in that repo.
+Nothing here is a product yet. Everything runs on one GPU node you own;
 there is no hosted service in this repo.
 
 ## What a cycle does
