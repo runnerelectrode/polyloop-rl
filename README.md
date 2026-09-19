@@ -132,19 +132,7 @@ the sandbox limits, the filter, the budget, the gate and the promote mode.
 
 Three layers, each usable without the one above it.
 
-```
-polyvoice        an ENVIRONMENT + RECIPE: Coval's simulated caller as the world, its judges as the reward,
-                 the dental receptionist scenarios, the ledger that joins calls to scores and explanations
-      │  implements polyloop's Environment protocol (load_tasks, run_rollouts, preflight, session_hints)
-polyloop-rl      the CONTROLLER: cycles (snapshot → … → gate → promote), the capture proxy, the receipt,
-                 the lineage, the budget, the UI. Owns what is measured; never how an episode is run.
-      │  calls rlcli + tinker-cookbook as libraries, and the Tinker API over HTTP
-rlcli            the TRAINING PRIMITIVES: `rlcli serve` (a Tinker-API server on SkyRL: trainer GPU +
-                 sampler GPU, LoRA, multi-adapter), the token-in/token-out bridge, Docker sandboxes,
-                 the hinted OPSD teacher, the trainer-vs-sampler logprob guard, trace import/capture
-      │  built on tinker-cookbook (renderers, RL and distillation loops, capture proxy) and SkyRL
-GPU node         any box with two GPUs: Lambda, a Modal container, your own
-```
+![the stack](docs/stack.svg)
 
 **rlcli** answers "how do I train this model at all": it stands up the server, turns a Harbor task or a
 prompt file into a training run, and guards the things that silently break RL (re-tokenization, trainer
@@ -225,7 +213,7 @@ polyloop/
   cli.py           run | approve | history | status | eval | warm | proxy | sessions | ui | report | tasks
 recipes/pydantic-v2/   loop.yaml (9B), loop-4b.yaml (4B), agent.yaml (mini-swe-agent)
 recipes/swe-mini/      loop.yaml + program.md
-scripts/               node_up.sh (node bring-up), arch_diagram.py (docs/architecture.svg)
+scripts/               node_up.sh (node bring-up), arch_diagram.py + stack_diagram.py (docs/*.svg)
 docs/                  DESIGN, ENVIRONMENTS, PRECEDENTS, DEMO-PLAN, BORROW-MAP, RESULTS, VOICE-LOOP-PLAN, results/
 tests/                 runner tests on a scripted environment (no GPU, no Docker)
 ```
