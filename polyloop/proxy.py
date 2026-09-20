@@ -38,6 +38,26 @@ from polyloop.events import now_iso, read_json, write_json
 MAIN, SIDE = "main", "side"
 
 
+def to_sse(completion: dict) -> bytes:
+    """One OpenAI chat completion -> the SSE bytes of an equivalent one-chunk stream."""
+    choice = (completion.get("choices") or [{}])[0]
+    msg = choice.get("message") or {}
+    delta: dict[str, Any] = {"role": msg.get("role", "assistant")}
+    if msg.get("content") is not None:
+        delta["content"] = msg["content"]
+    if msg.get("tool_calls"):
+        delta["tool_calls"] = [{**tc, "index": i} for i, tc in enumerate(msg["tool_calls"])]
+    head = {k: completion.get(k) for k in ("id", "created", "model", "system_fingerprint") if k in completion}
+    head["object"] = "chat.completion.chunk"
+    chunks = [
+        {**head, "choices": [{"index": 0, "delta": delta, "finish_reason": None}]},
+        {**head, "choices": [{"index": 0, "delta": {}, "finish_reason": choice.get("finish_reason") or "stop"}]},
+    ]
+    if completion.get("usage"):
+        chunks.append({**head, "choices": [], "usage": completion["usage"]})
+    return "".join(f"data: {json.dumps(c)}\n\n" for c in chunks).encode() + b"data: [DONE]\n\n"
+
+
 @dataclass
 class _Pending:
     session: str
@@ -189,8 +209,9 @@ def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: 
         except json.JSONDecodeError:
             return await handler(request)
         rewrite = False
+        client_stream = bool(body.get("stream")) and is_openai
         if body.get("stream"):
-            body["stream"] = False  # record the full turn; agents we target accept non-streaming
+            body["stream"] = False  # record the full turn; a streaming client gets it back as one SSE chunk
             rewrite = True
         if system_prompt:
             if is_openai and not any(m.get("role") == "system" for m in body.get("messages") or []):
@@ -216,6 +237,11 @@ def make_app(*, base_url: str, model: str, renderer_name: str | None, runs_dir: 
             if isinstance(data, dict):
                 text, calls, usage = (_extract_openai if is_openai else _extract_anthropic)(data)
                 await store.record(session, turn_type, body, text, calls, usage, started, seconds, done)
+                if client_stream:
+                    # Pipecat (and the OpenAI SDK generally) asked for SSE; hand the recorded completion back as
+                    # a single chunk plus [DONE] so the client's stream parser sees a normal stream.
+                    return web.Response(body=to_sse(data), content_type="text/event-stream",
+                                        headers={"Cache-Control": "no-cache"})
         return resp
 
     inner.middlewares.append(capture)
