@@ -19,7 +19,7 @@ export PATH="$HOME/.local/bin:/usr/local/cuda/bin:$PATH"
 sudo usermod -aG docker "$USER" || true
 
 cd ~/work
-[ -d SkyRL ] || { git clone -q https://github.com/NovaSky-AI/SkyRL && (cd SkyRL && git checkout -q 9719b4f74ae9cbb6ec022a8d67c1e8a835b52c7d); }
+[ -d SkyRL ] || { git clone -q https://github.com/NovaSky-AI/SkyRL && (cd SkyRL && git checkout -q a6871df55b9ce9e0671d595ffb627383d9d19ffe); }
 [ -d tinker-cookbook ] || { git clone -q https://github.com/thinking-machines-lab/tinker-cookbook && (cd tinker-cookbook && git checkout -q f46eddd); }
 [ -d rlcli ] || git clone -q https://github.com/polygramme/rlcli
 [ -d polyloop-rl ] || git clone -q https://github.com/runnerelectrode/polyloop-rl
